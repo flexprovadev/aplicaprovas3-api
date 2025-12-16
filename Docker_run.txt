@@ -1,1 +1,0 @@
-docker run -d -p 4000:4000 --name aplicaprovas3-api -e DATABASE_URL="mongodb+srv://aplicaprovas2:r6KxsVxJf36knF51@cluster0.llnqk.mongodb.net/aplicaprovas2?retryWrites=true&w=majority&appName=Cluster0" -e SERVER_PORT=4000 -e NODE_ENV=production -e SEED_PASSWORD="fJx5A4HFq6Y9NmcNgneT" -e JWT_SECRET="ed09924ddfefeb777f32bbe056f87b069735148f4910977b2dfd4c60937dcbd9" aplicaprovas3-api
