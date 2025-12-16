@@ -26,3 +26,5 @@ DATABASE_URL=mongodb://localhost:27017/aplicaprovas
 # Como subir a aplicação
 
 Para inicializar a aplicação localmente execute o script `dev`.
+
+# Versão atualizada em 12-2025
