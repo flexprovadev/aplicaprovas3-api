@@ -1,0 +1,90 @@
+const request = require("supertest");
+
+const BASE_URL = "http://localhost:4000"; // URL da sua API no Docker
+
+describe("Teacher Routes", () => {
+  let token;
+  let createdTeacherUUID;
+
+  // Antes de todos os testes, faça login e obtenha o token
+  beforeAll(async () => {
+    const loginResponse = await request(BASE_URL)
+      .post("/login")
+      .send({
+        email: "silvagirao@gmail.com", // Substitua pelo email válido
+        password: "fJx5A4HFq6Y9NmcNgneT", // Substitua pela senha válida
+      });
+
+    token = loginResponse.body.token;
+    expect(token).toBeDefined(); // Certifique-se de que o token foi gerado
+  });
+
+  test("Deve listar todos os professores", async () => {
+    const response = await request(BASE_URL)
+      .get("/teacher")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(200); // Verifica se o status é 200
+    expect(Array.isArray(response.body)).toBe(true); // Verifica se o corpo da resposta é um array
+  });
+
+  test("Deve criar um novo professor", async () => {
+    const response = await request(BASE_URL)
+      .post("/teacher")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Test Teacher",
+        email: "test.teacher@example.com",
+        password: "password123",
+      });
+
+    expect(response.status).toBe(200); // Verifica se o status é 200
+    expect(response.body.uuid).toBeDefined(); // Verifica se o UUID foi retornado
+
+    createdTeacherUUID = response.body.uuid; // Salva o UUID para os próximos testes
+  });
+
+  test("Deve obter um professor específico", async () => {
+    const response = await request(BASE_URL)
+      .get(`/teacher/${createdTeacherUUID}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(200); // Verifica se o status é 200
+    expect(response.body.uuid).toBe(createdTeacherUUID); // Verifica se o UUID corresponde
+    expect(response.body.name).toBe("Test Teacher"); // Verifica se o nome é o esperado
+  });
+
+  test("Deve atualizar os dados de um professor", async () => {
+    const response = await request(BASE_URL)
+      .put(`/teacher/${createdTeacherUUID}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Updated Teacher",
+        contactNumber: "123456789",
+      });
+
+    expect(response.status).toBe(200); // Verifica se o status é 200
+    expect(response.body.message).toBe("Professor atualizado com sucesso"); // Verifica a mensagem de sucesso
+  });
+
+  test("Deve atualizar a senha de um professor", async () => {
+    const response = await request(BASE_URL)
+      .post(`/teacher/${createdTeacherUUID}/password`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        password: "newPassword123",
+      });
+
+    expect(response.status).toBe(204); // Verifica se o status é 204 (No Content)
+  });
+
+  test("Deve remover um professor", async () => {
+    const response = await request(BASE_URL)
+      .delete(`/teacher/${createdTeacherUUID}`)
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(response.status).toBe(200); // Verifica se o status é 200
+    expect(response.body.message).toBe("Professor removido com sucesso"); // Verifica a mensagem de sucesso
+  });
+});
+

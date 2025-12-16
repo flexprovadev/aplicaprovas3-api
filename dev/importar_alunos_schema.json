@@ -1,0 +1,66 @@
+{
+  "id": 335880,
+  "num_rows": 1000,
+  "file_format": "json",
+  "name": "eucorrijo_importar_aluno",
+  "array": true,
+  "columns": [
+    {
+      "name": "studentName",
+      "null_percentage": 0,
+      "type": "Full Name",
+      "formula": null
+    },
+    {
+      "name": "studentEmail",
+      "null_percentage": 0,
+      "type": "Email Address",
+      "formula": null
+    },
+    {
+      "name": "studentPassword",
+      "null_percentage": 0,
+      "type": "Password",
+      "formula": null
+    },
+    {
+      "name": "classroomName",
+      "null_percentage": 0,
+      "type": "Custom List",
+      "values": [
+        "A",
+        "B",
+        "C"
+      ],
+      "selectionStyle": "random",
+      "distribution": null,
+      "formula": null
+    },
+    {
+      "name": "classroomYear",
+      "null_percentage": 0,
+      "type": "Custom List",
+      "values": [
+        "2018",
+        "2019",
+        "2020"
+      ],
+      "selectionStyle": "random",
+      "distribution": null,
+      "formula": null
+    },
+    {
+      "name": "classroomLevel",
+      "null_percentage": 0,
+      "type": "Custom List",
+      "values": [
+        "1",
+        "2",
+        "3"
+      ],
+      "selectionStyle": "random",
+      "distribution": null,
+      "formula": null
+    }
+  ]
+}
