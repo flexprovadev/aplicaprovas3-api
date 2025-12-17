@@ -31,7 +31,7 @@ router.get("", hasPermission(Permission.READ_ROLE.key), async (req, res) => {
     return res.status(400).json({ message: "Erro ao recuperar perfis" });
   }
 });
-
+// Em permissions, antes havia "funcoes"
 router.get(
   "/:uuid",
   hasPermission(Permission.READ_ROLE.key),
@@ -41,7 +41,7 @@ router.get(
       const missingPermissions = req.user.getMissingPermissions();
       const role = await Role.findOne({
         uuid,
-        funcoes: { $nin: missingPermissions },
+        permissions: { $nin: missingPermissions },
       }).lean();
       return res.json(role);
     } catch (ex) {
@@ -74,7 +74,7 @@ router.post("", hasPermission(Permission.CREATE_ROLE.key), async (req, res) => {
     return res.status(400).json({ message });
   }
 });
-
+// Em permissions, antes havia "funcoes"
 router.put(
   "/:uuid",
   hasPermission(Permission.UPDATE_ROLE.key),
@@ -83,7 +83,7 @@ router.put(
       const { uuid } = req.params;
       const missingPermissions = req.user.getMissingPermissions();
       const role = await Role.findOneAndUpdate(
-        { uuid, funcoes: { $nin: missingPermissions } },
+        { uuid, permissions: { $nin: missingPermissions } },
         req.body
       );
 
