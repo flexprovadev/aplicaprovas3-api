@@ -11,7 +11,7 @@ const app = express();
 app.use(cors({ exposedHeaders: Header.REFRESH_TOKEN }));
 app.use(require("helmet")());
 app.use(require("compression")());
-app.use(require("body-parser").json({ limit: "5mb" }));
+app.use(express.json({ limit: "5mb" }));
 
 console.log("Connecting to MongoDB...");
 mongoose
