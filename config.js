@@ -8,12 +8,7 @@ const databaseParams =
 const databaseURL = process.env.DATABASE_URL;
 
 const database = {
-  opts: {
-    useCreateIndex: true,
-    useNewUrlParser: true,
-    useFindAndModify: false,
-    useUnifiedTopology: true,
-  },
+  opts: {},
 };
 
 if (databaseURL) {

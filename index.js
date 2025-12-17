@@ -14,7 +14,11 @@ app.use(require("compression")());
 app.use(require("body-parser").json({ limit: "5mb" }));
 
 console.log("Connecting to MongoDB...");
-mongoose.connect(config.database.url, config.database.opts);
+mongoose
+  .connect(config.database.url, config.database.opts)
+  .catch((error) => {
+    console.error(`Error connecting to database: ${error}`);
+  });
 
 const databaseConnection = mongoose.connection;
 
