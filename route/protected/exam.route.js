@@ -148,6 +148,10 @@ router.get("/available", isStudent, async (req, res) => {
       .lean();
 
     const currentDateTime = DateTime.local();
+    const currentDate = currentDateTime.toJSDate();
+    const comingSoonLimitDate = currentDateTime
+      .plus({ days: config.exam.comingSoonMaxDays })
+      .toJSDate();
 
     const availableExams = await Exam.find({
       classrooms: { $in: classrooms },
@@ -155,8 +159,8 @@ router.get("/available", isStudent, async (req, res) => {
       $or: [
         { startAt: null },
         {
-          startAt: { $lte: currentDateTime },
-          $or: [{ endAt: null }, { endAt: { $gte: currentDateTime } }],
+          startAt: { $lte: currentDate },
+          $or: [{ endAt: null }, { endAt: { $gte: currentDate } }],
         },
       ],
     }).lean();
@@ -165,8 +169,8 @@ router.get("/available", isStudent, async (req, res) => {
       classrooms: { $in: classrooms },
       uuid: { $nin: unavailableUuids },
       startAt: {
-        $gte: currentDateTime,
-        $lte: currentDateTime.plus({ days: config.exam.comingSoonMaxDays }),
+        $gte: currentDate,
+        $lte: comingSoonLimitDate,
       },
     });
 
