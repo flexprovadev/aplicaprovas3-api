@@ -3,7 +3,9 @@ const multer = require('multer');
 const { importExamAnswers } = require('../../util/import.exam.util');
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
+const upload = multer({ dest: 'uploads/', limits: { fileSize: MAX_UPLOAD_SIZE_BYTES } });
 
 router.post('/import', upload.single('file'), async (req, res) => {
   try {

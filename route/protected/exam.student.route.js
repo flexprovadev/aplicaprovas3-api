@@ -9,7 +9,12 @@ const { isQuestionAnswerValid } = require("../../util/question.util");
 const { applyTimezone } = require("../../util/date.util");
 const { scheduleGrade } = require("../../util/grade.util");
 
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
+});
 
 router.get("/:uuid", isStudent, async (req, res) => {
   try {

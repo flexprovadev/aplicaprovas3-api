@@ -15,7 +15,12 @@ const { DateTime } = require("luxon");
 const { applyTimezone } = require("../../util/date.util");
 const { generateArchive } = require("../../util/exam.export.util");
 
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
+});
 
 const questionFilter = (question) =>
   [
