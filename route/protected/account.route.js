@@ -1,6 +1,17 @@
 const express = require("express");
 const router = express.Router();
 
+router.get("/me", (req, res) => {
+  const { user } = req;
+  return res.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    type: user.type,
+    permissions: user.getPermissions(),
+  });
+});
+
 router.post("/password", async (req, res) => {
   try {
     const { user } = req;

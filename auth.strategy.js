@@ -34,8 +34,51 @@ passport.use(
   new LocalStrategy(localStrategyOpts, localStrategyCallback)
 );
 
+const parseCookieHeader = (cookieHeader) => {
+  if (!cookieHeader || typeof cookieHeader !== "string") {
+    return {};
+  }
+
+  return cookieHeader.split(";").reduce((acc, rawCookie) => {
+    const trimmed = rawCookie.trim();
+    if (!trimmed) {
+      return acc;
+    }
+    const separatorIndex = trimmed.indexOf("=");
+    if (separatorIndex === -1) {
+      return acc;
+    }
+    const name = trimmed.slice(0, separatorIndex).trim();
+    const value = trimmed.slice(separatorIndex + 1);
+    if (!name) {
+      return acc;
+    }
+
+    try {
+      acc[name] = decodeURIComponent(value);
+    } catch {
+      acc[name] = value;
+    }
+    return acc;
+  }, {});
+};
+
+const cookieExtractor = (req) => {
+  const cookieHeader = req?.headers?.cookie;
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const cookies = parseCookieHeader(cookieHeader);
+  const token = cookies[config.jwt.cookie_name];
+  return token || null;
+};
+
 const jwtStrategyOpts = {
-  jwtFromRequest: ExtractJWT.fromAuthHeaderAsBearerToken(),
+  jwtFromRequest: ExtractJWT.fromExtractors([
+    cookieExtractor,
+    ExtractJWT.fromAuthHeaderAsBearerToken(),
+  ]),
   secretOrKey: config.jwt.secret,
 };
 

@@ -38,6 +38,7 @@ module.exports = {
   jwt: {
     secret: process.env.JWT_SECRET || "CHANGE_ME",
     expires_in: jwtExpiresIn,
+    cookie_name: process.env.JWT_COOKIE_NAME || "fp_at",
   },
   timezone: process.env.TIMEZONE || "America/Sao_Paulo",
   server_port: process.env.PORT || 4000,

@@ -6,8 +6,37 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const config = require("./config");
 
+const parseOrigins = (value) => {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
+const parsedOrigins = parseOrigins(process.env.CORS_ORIGINS);
+const allowedOrigins =
+  parsedOrigins.length > 0 ? parsedOrigins : ["http://localhost:3000"];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) {
+      // Allow requests with no origin (mobile apps, curl, same-origin)
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(require("helmet")());
 app.use(require("compression")());
 app.use(express.json({ limit: "5mb" }));
