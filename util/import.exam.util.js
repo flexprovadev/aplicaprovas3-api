@@ -1,5 +1,6 @@
 const axios = require('axios');
 const fs = require('fs');
+const { debugAuth, tokenFingerprint } = require("./logger.util");
 
 const importExamAnswers = async (filePath) => {
   const rawData = fs.readFileSync(filePath);
@@ -11,8 +12,10 @@ const importExamAnswers = async (filePath) => {
     const { studentExamUuid, jwtToken, questions } = aluno;
 
     console.log(`Enviando respostas para o aluno: ${studentExamUuid}`);
-    console.log(`Token JWT: ${jwtToken}`);
-    console.log('Questões:', questions);
+    debugAuth("Import: using JWT token", {
+      tokenFingerprint: tokenFingerprint(jwtToken),
+    });
+    debugAuth("Import: questions payload", { count: questions?.length || 0 });
 
     for (const { uuid, answer, skipped } of questions) {
       try {

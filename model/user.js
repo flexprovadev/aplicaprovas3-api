@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { UserType, Permission } = require("../enumerator");
 const { BaseModel, BaseSchemaOptions } = require("./base");
 const mongoose = require("mongoose");
+const { debugAuth, redactEmail } = require("../util/logger.util");
 
 const Schema = mongoose.Schema;
 
@@ -56,13 +57,13 @@ UserSchema.virtual("classrooms", {
 });
 
 UserSchema.pre("save", async function (next) {
-  console.log(`Hashing password for user: ${this.email}`);
+  debugAuth("Hashing password for user", { email: redactEmail(this.email) });
   this.password = await encryptPassword(this.password);
   next();
 });
 
 UserSchema.methods.isPasswordValid = async function isPasswordValid(password) {
-  console.log(`Comparing passwords for user: ${this.email}`);
+  debugAuth("Comparing passwords for user", { email: redactEmail(this.email) });
   return await comparePassword(password, this.password);
 };
 
@@ -101,4 +102,3 @@ UserSchema.methods.getJwtToken = function getJwtToken() {
 };
 
 module.exports = mongoose.model("User", UserSchema);
-
