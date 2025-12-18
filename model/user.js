@@ -98,7 +98,13 @@ UserSchema.methods.getMissingPermissions = function getMissingPermissions() {
 UserSchema.methods.getJwtToken = function getJwtToken() {
   const { id, email, name, type } = this;
   const permissions = this.getPermissions();
-  return jwt.sign({ id, email, name, type, permissions }, config.jwt.secret);
+  return jwt.sign(
+    { id, email, name, type, permissions },
+    config.jwt.secret,
+    {
+      expiresIn: config.jwt.expires_in,
+    }
+  );
 };
 
 module.exports = mongoose.model("User", UserSchema);

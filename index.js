@@ -1,14 +1,13 @@
 require("dotenv").config();
 require("./auth.strategy");
 
-const { Header } = require("./constants");
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const config = require("./config");
 
 const app = express();
-app.use(cors({ exposedHeaders: Header.REFRESH_TOKEN }));
+app.use(cors());
 app.use(require("helmet")());
 app.use(require("compression")());
 app.use(express.json({ limit: "5mb" }));

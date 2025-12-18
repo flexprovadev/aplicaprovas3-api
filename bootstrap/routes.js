@@ -1,17 +1,12 @@
 const passport = require("passport");
-const { refreshToken } = require("../middleware");
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
 function initialize(app) {
   const authentication = passport.authenticate("jwt", { session: false });
 
-  app.use("/", refreshToken, require("../route/public.route"));
-  app.use(
-    "/",
-    [authentication, refreshToken],
-    require("../route/protected.route")
-  );
+  app.use("/", require("../route/public.route"));
+  app.use("/", authentication, require("../route/protected.route"));
 
   app.use((req, res, next) => {
     return res.status(404).json({ message: "Page Not Found" });

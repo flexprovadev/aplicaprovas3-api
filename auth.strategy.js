@@ -39,6 +39,10 @@ const jwtStrategyOpts = {
   secretOrKey: config.jwt.secret,
 };
 
+if (config.jwt.expires_in) {
+  jwtStrategyOpts.jsonWebTokenOptions = { maxAge: config.jwt.expires_in };
+}
+
 const jwtStrategyCallback = async (jwtPayload, callback) => {
   debugAuth("Verifying JWT", { userId: jwtPayload.id });
   const user = await User.findOne({ _id: jwtPayload.id }).populate("roles");

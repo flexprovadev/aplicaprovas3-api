@@ -1,4 +1,3 @@
-const { Header } = require("./constants");
 const databaseName = process.env.DATABASE_NAME || "CHANGE_ME";
 const databaseHost = process.env.DATABASE_HOST || "CHANGE_ME";
 const databaseUser = process.env.DATABASE_USER || "CHANGE_ME";
@@ -6,6 +5,7 @@ const databasePass = process.env.DATABASE_PASS || "CHANGE_ME";
 const databaseParams =
   process.env.DATABASE_PARAMS || "retryWrites=true&w=majority";
 const databaseURL = process.env.DATABASE_URL;
+const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "5h";
 
 const database = {
   opts: {},
@@ -36,8 +36,8 @@ module.exports = {
     },
   },
   jwt: {
-    refresh_header: Header.REFRESH_TOKEN,
     secret: process.env.JWT_SECRET || "CHANGE_ME",
+    expires_in: jwtExpiresIn,
   },
   timezone: process.env.TIMEZONE || "America/Sao_Paulo",
   server_port: process.env.PORT || 4000,

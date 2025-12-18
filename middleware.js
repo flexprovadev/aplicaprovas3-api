@@ -1,4 +1,3 @@
-const config = require("./config");
 const { UserType } = require("./enumerator");
 
 const hasPermission = (permission) => {
@@ -23,18 +22,10 @@ const isStudent = isUserType(UserType.STUDENT);
 const isTeacher = isUserType(UserType.TEACHER);
 const isSuperuser = isUserType(UserType.SUPERUSER);
 
-const refreshToken = (req, res, next) => {
-  if (req.user) {
-    res.setHeader(config.jwt.refresh_header, req.user.getJwtToken());
-  }
-  next();
-};
-
 module.exports = {
   hasPermission,
   isStaff,
   isStudent,
   isTeacher,
   isSuperuser,
-  refreshToken,
 };
