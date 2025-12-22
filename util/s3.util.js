@@ -1,5 +1,6 @@
 const config = require("../config");
-const AWS = require("aws-sdk");
+const { S3Client, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { Upload } = require("@aws-sdk/lib-storage");
 const { v4: uuidv4 } = require("uuid");
 const { StorageFolder } = require("../enumerator");
 
@@ -49,24 +50,53 @@ const buildUploadParams = (req, prefixGenerator) => {
 
 const getClient = () => {
   const { accessKey, secretKey } = config.s3.credentials;
-  return new AWS.S3({
-    accessKeyId: accessKey,
-    secretAccessKey: secretKey,
-  });
+  const region =
+    config.s3.region ||
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION;
+
+  const clientConfig = {};
+
+  if (region) {
+    clientConfig.region = region;
+  }
+
+  if (accessKey || secretKey) {
+    clientConfig.credentials = {
+      accessKeyId: accessKey,
+      secretAccessKey: secretKey,
+    };
+  }
+
+  return new S3Client(clientConfig);
 };
 
 const defaultClient = getClient();
 
 const upload = (params, res) => {
-  defaultClient.upload(params, (err, data) => {
-    if (err) {
-      throw new Error(err);
-    }
-    const { Location: location } = data;
-    const filename = location.substring(location.lastIndexOf("/") + 1);
-    const uuid = filename.substring(0, filename.indexOf("."));
-    return res.json({ uuid, location });
+  const uploader = new Upload({
+    client: defaultClient,
+    params,
   });
+
+  uploader
+    .done()
+    .then((data) => {
+      const key = data?.Key || params?.Key;
+      const fallbackRegion = config.s3.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+      const location =
+        data?.Location ||
+        (key
+          ? `https://${config.s3.bucket}.s3${fallbackRegion ? `.${fallbackRegion}` : ""}.amazonaws.com/${key}`
+          : "");
+      const filename = location.substring(location.lastIndexOf("/") + 1);
+      const uuid = filename.substring(0, filename.indexOf("."));
+      return res.json({ uuid, location });
+    })
+    .catch((err) => {
+      console.error("Error uploading file to S3:", err);
+      return res.status(500).json({ message: "Erro ao enviar arquivo" });
+    });
 };
 
 const doExamUpload = (req, res) => {
@@ -94,9 +124,9 @@ const getObject = async (url) => {
     Bucket: config.s3.bucket,
   };
 
-  const data = await defaultClient.headObject(params).promise();
-
-  const stream = await defaultClient.getObject(params).createReadStream();
+  const data = await defaultClient.send(new HeadObjectCommand(params));
+  const file = await defaultClient.send(new GetObjectCommand(params));
+  const stream = file.Body;
 
   return {
     stream,

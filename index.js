@@ -3,6 +3,7 @@ require("./auth.strategy");
 
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const mongoose = require("mongoose");
 const config = require("./config");
 
@@ -37,7 +38,11 @@ const corsOptions = {
 
 const app = express();
 app.use(cors(corsOptions));
-app.use(require("helmet")());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(require("compression")());
 app.use(express.json({ limit: "5mb" }));
 

@@ -15,6 +15,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
+# DEBUG: mostrar versão do helmet (remover em produção)
+# RUN npm list helmet
+
 # Copy the rest of the application
 COPY . .
 

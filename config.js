@@ -6,6 +6,8 @@ const databaseParams =
   process.env.DATABASE_PARAMS || "retryWrites=true&w=majority";
 const databaseURL = process.env.DATABASE_URL;
 const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "5h";
+const s3Region =
+  process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || process.env.S3_REGION;
 
 const database = {
   opts: {},
@@ -29,6 +31,7 @@ module.exports = {
   s3: {
     prefix: process.env.S3_PREFIX || "",
     bucket: process.env.S3_BUCKET || "storage.eucorrijo.com",
+    region: s3Region,
     credentials: {
       accessKey: process.env.S3_ACCESS_KEY || "",
       secretKey:

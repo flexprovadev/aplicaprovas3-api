@@ -1,6 +1,6 @@
 const { ExamStudentStatus, QuestionType } = require("../enumerator");
 const { ExamStudent } = require("../model");
-const json2csv = require("json2csv");
+const { Parser } = require("@json2csv/plainjs");
 const DateTimeFormatter = require("date-time-format-timezone");
 const config = require("../config");
 const archiver = require("archiver");
@@ -51,7 +51,8 @@ const generateCSV = async ({ exam, examStudents, questionMap, archive }) => {
     return acc;
   }, []);
 
-  const csv = json2csv.parse(data, { fields });
+  const parser = new Parser({ fields });
+  const csv = parser.parse(data);
 
   archive.append(csv, { name: `${exam.name}.csv` });
 };
