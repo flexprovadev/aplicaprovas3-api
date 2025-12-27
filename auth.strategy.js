@@ -80,6 +80,7 @@ const jwtStrategyOpts = {
     ExtractJWT.fromAuthHeaderAsBearerToken(),
   ]),
   secretOrKey: config.jwt.secret,
+  algorithms: ["HS256"],
 };
 
 if (config.jwt.expires_in) {

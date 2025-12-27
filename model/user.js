@@ -103,6 +103,7 @@ UserSchema.methods.getJwtToken = function getJwtToken() {
     config.jwt.secret,
     {
       expiresIn: config.jwt.expires_in,
+      algorithm: "HS256",
     }
   );
 };
