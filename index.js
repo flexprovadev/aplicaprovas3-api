@@ -4,6 +4,7 @@ require("./auth.strategy");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const passport = require("passport");
 const mongoose = require("mongoose");
 const config = require("./config");
 
@@ -45,6 +46,7 @@ app.use(
 );
 app.use(require("compression")());
 app.use(express.json({ limit: "5mb" }));
+app.use(passport.initialize());
 
 console.log("Connecting to MongoDB...");
 mongoose
