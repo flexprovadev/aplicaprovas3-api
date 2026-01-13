@@ -37,6 +37,9 @@ router.get(
         throw new Error("Erro ao recuperar turma");
       }
 
+      // Converter students para array de UUIDs (mesmo padrão de student.route.js)
+      classroom.students = classroom.students.map((x) => x.uuid);
+
       return res.json(classroom);
     } catch (ex) {
       const { message = "Erro ao recuperar turma" } = ex;
