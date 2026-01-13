@@ -14,6 +14,7 @@ const { v4: uuidv4 } = require("uuid");
 const { DateTime } = require("luxon");
 const { applyTimezone } = require("../../util/date.util");
 const { generateArchive } = require("../../util/exam.export.util");
+const { importCsvAnswers } = require("../../util/import.csv.answers.util");
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -448,6 +449,23 @@ router.post(
     } catch (ex) {
       const { message } = ex;
       return res.status(400).json({ message, errors });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/import-answers",
+  upload.single("file"),
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const { file } = req;
+      const result = await importCsvAnswers(uuid, file.buffer);
+      return res.json(result);
+    } catch (ex) {
+      const { message = "Erro ao importar respostas" } = ex;
+      return res.status(400).json({ message });
     }
   }
 );
