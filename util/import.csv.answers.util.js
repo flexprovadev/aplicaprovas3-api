@@ -71,12 +71,16 @@ const importCsvAnswers = async (examUuid, fileBuffer) => {
       }
 
       // Mapear respostas (colunas 1 em diante = Q01, Q02, ...)
+      // Valores que indicam questão em branco/pulada
+      const blankIndicators = ["", "NP", "INV"];
+
       const answers = {};
       questions.forEach((question, qIndex) => {
-        const value = values[qIndex + 1] || ""; // +1 porque coluna 0 é email
+        const rawValue = values[qIndex + 1] || "";
+        const isBlank = blankIndicators.includes(rawValue.toUpperCase());
         answers[question.uuid] = {
-          value: value,
-          skipped: value === "",
+          value: isBlank ? "" : rawValue,
+          skipped: isBlank,
         };
       });
 
