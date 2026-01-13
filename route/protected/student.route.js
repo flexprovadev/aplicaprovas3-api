@@ -14,15 +14,49 @@ const type = UserType.STUDENT;
 
 router.get("", hasPermission(Permission.READ_STUDENT.key), async (req, res) => {
   try {
-    const users = await User.find({ type })
-      .select("uuid email name enabled")
-      .populate({
-        path: "classrooms",
-        select: "-_id uuid name level year -students",
-      })
-      .sort({ email: 1 })
-      .lean();
-    return res.json(users);
+    // Verifica se há parâmetros de paginação
+    const hasPagination = req.query.page || req.query.limit;
+
+    if (hasPagination) {
+      // Modo paginado: retorna { data, total, page, limit }
+      const page = Math.max(parseInt(req.query.page) || 1, 1);
+      const limitOptions = [25, 50, 100];
+      const requestedLimit = parseInt(req.query.limit);
+      const limit = limitOptions.includes(requestedLimit) 
+        ? requestedLimit 
+        : 25; // Default 25 se não especificado ou inválido
+      
+      const skip = (page - 1) * limit;
+
+      // Busca paginada com contagem total
+      const [users, total] = await Promise.all([
+        User.find({ type })
+          .select("uuid email name enabled")
+          .populate({
+            path: "classrooms",
+            select: "-_id uuid name level year -students",
+          })
+          .sort({ email: 1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        User.countDocuments({ type }),
+      ]);
+
+      return res.json({ data: users, total, page, limit });
+    } else {
+      // Modo compatibilidade: retorna array direto (para outros serviços que usam fetch())
+      const users = await User.find({ type })
+        .select("uuid email name enabled")
+        .populate({
+          path: "classrooms",
+          select: "-_id uuid name level year -students",
+        })
+        .sort({ email: 1 })
+        .lean();
+      
+      return res.json(users);
+    }
   } catch (ex) {
     return res.status(400).json({ message: "Erro ao recuperar alunos" });
   }
