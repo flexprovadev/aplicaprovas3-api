@@ -72,6 +72,8 @@ const Permission = {
   UPDATE_DOCUMENT: { key: "update-document", label: "Editar", context: "Document" },
   DELETE_DOCUMENT: { key: "delete-document", label: "Remover", context: "Document" },
   EXPORT_DOCUMENT: { key: "export-document", label: "Exportar", context: "Document" },
+  
+  UNLOCK_MODEL: { key: "unlock-model", label: "Desbloquear", context: "Modelo" },
 };
 
 const UserType = {
