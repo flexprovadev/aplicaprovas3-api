@@ -45,6 +45,18 @@ const parseDurationToMs = (value) => {
   return amount * multiplier;
 };
 
+/**
+ * Normaliza o valor de SameSite para cookies.
+ * 
+ * IMPORTANTE para iOS/Safari:
+ * - SameSite=None REQUER Secure=true e HTTPS
+ * - Safari iOS bloqueia cookies third-party por padrão
+ * - Para cross-origin, use SameSite=None com Secure=true
+ * - Para same-origin, SameSite=Lax ou Strict funciona melhor
+ * 
+ * @param {string} value - Valor de SameSite ('lax', 'strict', 'none')
+ * @returns {string} Valor normalizado
+ */
 const normalizeSameSite = (value) => {
   const normalized = String(value || "lax").trim().toLowerCase();
   if (normalized === "none") {
@@ -56,12 +68,56 @@ const normalizeSameSite = (value) => {
   return "lax";
 };
 
+/**
+ * Constrói as opções de cookie para autenticação JWT.
+ * 
+ * CONFIGURAÇÃO PARA iOS/Safari:
+ * 
+ * O Safari iOS tem políticas muito restritivas para cookies:
+ * 1. Cookies third-party são bloqueados por padrão
+ * 2. SameSite=None REQUER Secure=true e conexão HTTPS
+ * 3. Cookies podem não funcionar em contexto cross-origin
+ * 
+ * RECOMENDAÇÕES:
+ * - Para desenvolvimento local: SameSite=Lax, Secure=false (HTTP)
+ * - Para produção cross-origin: SameSite=None, Secure=true (HTTPS obrigatório)
+ * - Para produção same-origin: SameSite=Lax ou Strict, Secure=true
+ * 
+ * VARIÁVEIS DE AMBIENTE:
+ * - JWT_COOKIE_SAMESITE: 'lax' | 'strict' | 'none' (padrão: 'lax')
+ * - JWT_COOKIE_SECURE: 'true' | 'false' (padrão: true em produção)
+ * - JWT_COOKIE_DOMAIN: domínio do cookie (opcional)
+ * 
+ * NOTA: O frontend também usa header Authorization como fallback para iOS,
+ * então mesmo que cookies falhem, a autenticação ainda funciona.
+ * 
+ * @param {Object} options - Opções de configuração
+ * @param {boolean} options.includeMaxAge - Se deve incluir maxAge no cookie
+ * @returns {Object} Opções de cookie configuradas
+ */
 const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
   const sameSite = normalizeSameSite(process.env.JWT_COOKIE_SAMESITE);
   const secure =
     isTruthy(process.env.JWT_COOKIE_SECURE) ||
     (process.env.JWT_COOKIE_SECURE === undefined &&
       process.env.NODE_ENV === "production");
+
+  // Validação: SameSite=None requer Secure=true
+  if (sameSite === "none" && !secure) {
+    console.warn(
+      "⚠️  AVISO: SameSite=None requer Secure=true. " +
+      "Cookies podem não funcionar corretamente, especialmente no iOS/Safari. " +
+      "Configure JWT_COOKIE_SECURE=true ou use HTTPS."
+    );
+  }
+
+  // Validação: SameSite=None em desenvolvimento pode causar problemas
+  if (sameSite === "none" && process.env.NODE_ENV !== "production") {
+    console.warn(
+      "⚠️  AVISO: SameSite=None em desenvolvimento pode causar problemas. " +
+      "Considere usar SameSite=Lax para desenvolvimento local."
+    );
+  }
 
   const options = {
     httpOnly: true,
@@ -80,6 +136,16 @@ const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
     if (maxAge) {
       options.maxAge = maxAge;
     }
+  }
+
+  // Log de diagnóstico em desenvolvimento
+  if (process.env.NODE_ENV !== "production") {
+    debugAuth("Cookie options configured", {
+      sameSite,
+      secure,
+      domain: domain || "not set",
+      hasMaxAge: !!options.maxAge,
+    });
   }
 
   return options;
