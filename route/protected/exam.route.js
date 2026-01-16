@@ -47,23 +47,38 @@ router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
     const studentsSelectFields = "-_id name email";
 
     const examFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+    const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+    const studentMatch = createSchoolFilter(req.schoolPrefix, "email");
 
     const exams = await Exam.find(examFilter)
       .populate([
         {
           path: "classrooms",
           select: "-_id uuid name year level",
-          populate: { path: "students", select: studentsSelectFields },
+          ...(classroomMatch ? { match: classroomMatch } : {}),
+          populate: {
+            path: "students",
+            select: studentsSelectFields,
+            ...(studentMatch ? { match: studentMatch } : {}),
+          },
         },
         {
           path: "examsInProgress",
           select: "-_id -exam uuid createdAt",
-          populate: { path: "student", select: studentsSelectFields },
+          populate: {
+            path: "student",
+            select: studentsSelectFields,
+            ...(studentMatch ? { match: studentMatch } : {}),
+          },
         },
         {
           path: "examsSubmitted",
           select: "-_id -exam uuid createdAt submittedAt",
-          populate: { path: "student", select: studentsSelectFields },
+          populate: {
+            path: "student",
+            select: studentsSelectFields,
+            ...(studentMatch ? { match: studentMatch } : {}),
+          },
         },
       ])
       .select(
@@ -117,18 +132,27 @@ router.get("/available", isStudent, async (req, res) => {
   try {
     const { user: student } = req;
 
+    const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+    const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const examsInProgress = await ExamStudent.find({
       student,
       status: ExamStudentStatus.PROGRESS,
     })
-      .populate("exam")
+      .populate({
+        path: "exam",
+        ...(examMatch ? { match: examMatch } : {}),
+      })
       .lean();
 
     const examsSubmitted = await ExamStudent.find({
       student,
       status: ExamStudentStatus.SUBMITTED,
     })
-      .populate("exam")
+      .populate({
+        path: "exam",
+        ...(examMatch ? { match: examMatch } : {}),
+      })
       .lean();
 
     const examStudentMapper = (entry) => {
@@ -143,15 +167,18 @@ router.get("/available", isStudent, async (req, res) => {
       };
     };
 
-    const progress = examsInProgress.map(examStudentMapper);
+    const examExistsFilter = (entry) => entry.exam;
 
-    const done = examsSubmitted.map(examStudentMapper);
+    const progress = examsInProgress.filter(examExistsFilter).map(examStudentMapper);
+
+    const done = examsSubmitted.filter(examExistsFilter).map(examStudentMapper);
 
     const unavailableUuids = [...progress, ...done].map((entry) => entry.uuid);
 
     const classrooms = await Classroom.find({
       enabled: true,
       students: { $in: [student] },
+      ...(classroomMatch || {}),
     })
       .select("_id")
       .lean();
@@ -162,7 +189,10 @@ router.get("/available", isStudent, async (req, res) => {
       .plus({ days: config.exam.comingSoonMaxDays })
       .toJSDate();
 
+    const examFilter = examMatch || {};
+
     const availableExams = await Exam.find({
+      ...examFilter,
       classrooms: { $in: classrooms },
       uuid: { $nin: unavailableUuids },
       $or: [
@@ -175,6 +205,7 @@ router.get("/available", isStudent, async (req, res) => {
     }).lean();
 
     const comingSoonExams = await Exam.find({
+      ...examFilter,
       classrooms: { $in: classrooms },
       uuid: { $nin: unavailableUuids },
       startAt: {
@@ -216,24 +247,47 @@ router.get(
     try {
       const { uuid } = req.params;
 
-      const exam = await Exam.findOne({ uuid })
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+      const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+      const studentMatch = createSchoolFilter(req.schoolPrefix, "email");
+
+      const exam = await Exam.findOne(examFilter)
         .populate([
-          { path: "classrooms", select: "-_id uuid name" },
+          {
+            path: "classrooms",
+            select: "-_id uuid name",
+            ...(classroomMatch ? { match: classroomMatch } : {}),
+          },
           {
             path: "examsInProgress",
             select: "-_id -exam uuid createdAt",
-            populate: { path: "student", select: "-_id email" },
+            populate: {
+              path: "student",
+              select: "-_id email",
+              ...(studentMatch ? { match: studentMatch } : {}),
+            },
           },
           {
             path: "examsSubmitted",
             select: "-_id -exam uuid createdAt submittedAt",
-            populate: { path: "student", select: "-_id email" },
+            populate: {
+              path: "student",
+              select: "-_id email",
+              ...(studentMatch ? { match: studentMatch } : {}),
+            },
           },
         ])
         .select(
           "uuid name startAt endAt durationExam instructions documentUrl questions gradeStrategy gradeOptions"
         )
         .lean();
+
+      if (!exam) {
+        throw new Error("Erro ao recuperar prova");
+      }
 
       const courseUuids = exam.questions.reduce((acc, { course }) => {
         if (!acc.includes(course)) {
@@ -279,7 +333,12 @@ router.get(
     try {
       const { uuid } = req.params;
 
-      const exam = await Exam.findOne({ uuid });
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter);
 
       if (!exam) {
         throw new Error("Não foi possível encontrar a prova");
@@ -307,9 +366,21 @@ router.post("", hasPermission(Permission.CREATE_EXAM.key), async (req, res) => {
     const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
     const prefixedName = addSchoolPrefix(req.body.name, req.schoolPrefix);
 
+    const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+
     const classrooms = await Classroom.find({
       uuid: classroomUuids,
+      ...classroomFilter,
     }).select("uuid");
+
+    if (
+      Array.isArray(classroomUuids) &&
+      classroomUuids.length !== classrooms.length
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Turma pertence a outra escola" });
+    }
 
     const exam = await Exam.create({
       ...req.body,
@@ -336,12 +407,35 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
     const { uuid } = req.params;
     const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
 
+    if (classroomUuids !== undefined && !req.schoolPrefix) {
+      return res.status(400).json({ message: "Escola não identificada" });
+    }
+
+    if (req.body.name !== undefined && !req.schoolPrefix) {
+      return res.status(400).json({ message: "Escola não identificada" });
+    }
+
+    const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+
     const classrooms = await Classroom.find({
       uuid: classroomUuids,
+      ...classroomFilter,
     }).select("uuid");
+
+    if (
+      Array.isArray(classroomUuids) &&
+      classroomUuids.length !== classrooms.length
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Turma pertence a outra escola" });
+    }
 
     const updateQuery = {
       ...req.body,
+      ...(req.body.name !== undefined
+        ? { name: addSchoolPrefix(req.body.name, req.schoolPrefix) }
+        : {}),
       gradeStrategy,
       questions: normalizeQuestions(questions),
       classrooms,
@@ -484,9 +578,12 @@ router.get("/:uuid/take", isStudent, async (req, res) => {
     const { user: student } = req;
     const { uuid } = req.params;
 
+    const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const classrooms = await Classroom.find({
       enabled: true,
       students: { $in: [student] },
+      ...(classroomMatch || {}),
     })
       .select("_id")
       .lean();
@@ -495,6 +592,7 @@ router.get("/:uuid/take", isStudent, async (req, res) => {
       uuid,
       classrooms: { $in: classrooms },
       enabled: true,
+      ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
     });
 
     if (!exam) {
@@ -563,7 +661,11 @@ router.get("/:uuid/receipt", isStudent, async (req, res) => {
     const { user: student } = req;
     const { uuid } = req.params;
 
-    const exam = await Exam.findOne({ uuid, enabled: true }).select("id");
+    const exam = await Exam.findOne({
+      uuid,
+      enabled: true,
+      ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+    }).select("id");
 
     if (!exam) {
       throw new Error("Prova não encontrada");

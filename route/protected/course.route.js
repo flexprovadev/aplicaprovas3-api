@@ -65,7 +65,16 @@ router.put(
     try {
       const { uuid } = req.params;
 
-      const updateQuery = { ...req.body };
+      if (req.body.name !== undefined && !req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      const updateQuery = {
+        ...req.body,
+        ...(req.body.name !== undefined
+          ? { name: addSchoolPrefix(req.body.name, req.schoolPrefix) }
+          : {}),
+      };
 
       const course = await Course.findOneAndUpdate({ uuid }, updateQuery);
 

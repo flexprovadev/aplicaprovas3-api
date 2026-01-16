@@ -11,10 +11,15 @@ router.get(
   async (req, res) => {
     try {
       const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+      const studentMatch = createSchoolFilter(req.schoolPrefix, "email");
 
       const classrooms = await Classroom.find(classroomFilter)
         .select("uuid name year level shift enabled")
-        .populate({ path: "students", select: "-_id uuid name email" })
+        .populate({
+          path: "students",
+          select: "-_id uuid name email",
+          ...(studentMatch ? { match: studentMatch } : {}),
+        })
         .sort({ name: 1, level: 1, year: 1 })
         .lean();
       return res.json(classrooms);
@@ -32,9 +37,19 @@ router.get(
     try {
       const { uuid } = req.params;
 
-      const classroom = await Classroom.findOne({ uuid })
+      const classroomFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+      const studentMatch = createSchoolFilter(req.schoolPrefix, "email");
+
+      const classroom = await Classroom.findOne(classroomFilter)
         .lean()
-        .populate({ path: "students", select: "uuid email name" });
+        .populate({
+          path: "students",
+          select: "uuid email name",
+          ...(studentMatch ? { match: studentMatch } : {}),
+        });
 
       if (!classroom) {
         throw new Error("Erro ao recuperar turma");
@@ -64,10 +79,22 @@ router.post(
 
       const prefixedName = addSchoolPrefix(name, req.schoolPrefix);
 
+      const studentFilter = createSchoolFilter(req.schoolPrefix, "email") || {};
+
       const students = await User.find({
         type: UserType.STUDENT,
         uuid: req.body.students,
+        ...studentFilter,
       });
+
+      if (
+        Array.isArray(req.body.students) &&
+        req.body.students.length !== students.length
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Aluno pertence a outra escola" });
+      }
 
       const classroom = await Classroom.create({
         name: prefixedName,
@@ -96,12 +123,38 @@ router.put(
     try {
       const { uuid } = req.params;
 
+      if (req.body.students !== undefined && !req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      if (req.body.name !== undefined && !req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      const studentFilter = createSchoolFilter(req.schoolPrefix, "email") || {};
+
       const students = await User.find({
         type: UserType.STUDENT,
         uuid: req.body.students,
+        ...studentFilter,
       });
 
-      const updateQuery = { ...req.body, students };
+      if (
+        Array.isArray(req.body.students) &&
+        req.body.students.length !== students.length
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Aluno pertence a outra escola" });
+      }
+
+      const updateQuery = {
+        ...req.body,
+        ...(req.body.name !== undefined
+          ? { name: addSchoolPrefix(req.body.name, req.schoolPrefix) }
+          : {}),
+        students,
+      };
 
       const classroom = await Classroom.findOneAndUpdate({ uuid }, updateQuery);
 

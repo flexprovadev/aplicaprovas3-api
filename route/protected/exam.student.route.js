@@ -8,6 +8,7 @@ const { doStudentUpload } = require("../../util/s3.util");
 const { isQuestionAnswerValid } = require("../../util/question.util");
 const { applyTimezone } = require("../../util/date.util");
 const { scheduleGrade } = require("../../util/grade.util");
+const { createSchoolFilter } = require("../../util/school.util");
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -21,15 +22,20 @@ router.get("/:uuid", isStudent, async (req, res) => {
     const { user: student } = req;
     const { uuid } = req.params;
 
+    const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const examStudent = await ExamStudent.findOne({
       uuid,
       student,
       status: ExamStudentStatus.PROGRESS,
     })
-      .populate("exam")
+      .populate({
+        path: "exam",
+        ...(examMatch ? { match: examMatch } : {}),
+      })
       .lean();
 
-    if (!examStudent) {
+    if (!examStudent || !examStudent.exam) {
       throw new Error();
     }
 
@@ -61,17 +67,22 @@ router.get("/:uuid/receipt", isStudent, async (req, res) => {
     const { user: student } = req;
     const { uuid } = req.params;
 
+    const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const examStudent = await ExamStudent.findOne({
       uuid,
       student,
       status: ExamStudentStatus.SUBMITTED,
     })
-      .populate("exam")
+      .populate({
+        path: "exam",
+        ...(examMatch ? { match: examMatch } : {}),
+      })
       .lean();
 
     const courses = await Course.find().lean();
 
-    if (!examStudent) {
+    if (!examStudent || !examStudent.exam) {
       throw new Error();
     }
 
@@ -114,19 +125,24 @@ router.post("/:uuid/submit", isStudent, async (req, res) => {
     const { uuid } = req.params;
     const { answers } = req.body;
 
+    const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const examStudent = await ExamStudent.findOne({
       student,
       uuid,
       status: ExamStudentStatus.PROGRESS,
-    }).populate("exam");
+    }).populate({
+      path: "exam",
+      ...(examMatch ? { match: examMatch } : {}),
+    });
+
+    if (!examStudent || !examStudent.exam) {
+      throw new Error("Prova do aluno não encontrada");
+    }
 
     const {
       exam: { questions },
     } = examStudent;
-
-    if (!examStudent) {
-      throw new Error("Prova do aluno não encontrada");
-    }
 
     const latestAnswers = { ...examStudent.answers, ...answers };
 
@@ -163,15 +179,20 @@ router.post(
       const { user: student } = req;
       const { uuid } = req.params;
 
+      const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
       const examStudent = await ExamStudent.findOne({
         student,
         uuid,
         status: ExamStudentStatus.PROGRESS,
       })
-        .populate("exam")
+        .populate({
+          path: "exam",
+          ...(examMatch ? { match: examMatch } : {}),
+        })
         .lean();
 
-      if (!examStudent) {
+      if (!examStudent || !examStudent.exam) {
         throw new Error();
       }
 
@@ -189,13 +210,18 @@ router.put("/:uuid/answer/:answerUuid", isStudent, async (req, res) => {
     const { uuid, answerUuid } = req.params;
     const { value, skipped } = req.body;
 
+    const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
     const examStudent = await ExamStudent.findOne({
       uuid,
       student,
       status: ExamStudentStatus.PROGRESS,
-    }).populate("exam");
+    }).populate({
+      path: "exam",
+      ...(examMatch ? { match: examMatch } : {}),
+    });
 
-    if (!examStudent) {
+    if (!examStudent || !examStudent.exam) {
       throw new Error("Prova do aluno não encontrada");
     }
 

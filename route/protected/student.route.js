@@ -100,12 +100,30 @@ router.post(
         return res.status(400).json({ message: "Escola não identificada" });
       }
 
+      const { classrooms = [] } = req.body;
+
       const providedPrefix = getSchoolFromEmail(req.body.email);
       if (providedPrefix && providedPrefix !== req.schoolPrefix) {
         return res.status(400).json({ message: "Email pertence a outra escola" });
       }
 
       const prefixedEmail = addSchoolPrefix(req.body.email, req.schoolPrefix);
+
+      if (Array.isArray(classrooms) && classrooms.length > 0) {
+        const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+        const allowedClassrooms = await Classroom.find({
+          uuid: { $in: classrooms },
+          ...classroomFilter,
+        })
+          .select("uuid")
+          .lean();
+
+        if (allowedClassrooms.length !== classrooms.length) {
+          return res
+            .status(400)
+            .json({ message: "Turma pertence a outra escola" });
+        }
+      }
 
       const user = await User.create({
         ...req.body,
@@ -118,8 +136,6 @@ router.post(
       }
 
       const { uuid, _id } = user;
-
-      const { classrooms = [] } = req.body;
 
       await Classroom.collection.updateMany(
         { uuid: { $in: classrooms } },
@@ -172,10 +188,45 @@ router.put(
     try {
       const { uuid } = req.params;
       const { password } = req.body;
+      const { classrooms = [] } = req.body;
 
       let updateQuery = { ...req.body };
+      if (req.body.email !== undefined) {
+        if (!req.schoolPrefix) {
+          return res.status(400).json({ message: "Escola não identificada" });
+        }
+
+        const providedPrefix = getSchoolFromEmail(req.body.email);
+        if (providedPrefix && providedPrefix !== req.schoolPrefix) {
+          return res
+            .status(400)
+            .json({ message: "Email pertence a outra escola" });
+        }
+
+        updateQuery.email = addSchoolPrefix(req.body.email, req.schoolPrefix);
+      }
       if (password) {
         updateQuery.password = await encryptPassword(password);
+      }
+
+      if (Array.isArray(classrooms) && classrooms.length > 0) {
+        if (!req.schoolPrefix) {
+          return res.status(400).json({ message: "Escola não identificada" });
+        }
+
+        const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+        const allowedClassrooms = await Classroom.find({
+          uuid: { $in: classrooms },
+          ...classroomFilter,
+        })
+          .select("uuid")
+          .lean();
+
+        if (allowedClassrooms.length !== classrooms.length) {
+          return res
+            .status(400)
+            .json({ message: "Turma pertence a outra escola" });
+        }
       }
 
       const user = await User.findOneAndUpdate({ uuid, type }, updateQuery);
@@ -185,8 +236,6 @@ router.put(
       }
 
       const { _id } = user;
-
-      const { classrooms = [] } = req.body;
 
       await Classroom.collection.updateMany(
         { uuid: { $nin: classrooms } },
