@@ -9,7 +9,7 @@ const {
   ClassroomValidator,
 } = require("../../util/import.util");
 const { encryptPassword } = require("../../util/password.util");
-const { createSchoolFilter } = require("../../util/school.util");
+const { addSchoolPrefix, createSchoolFilter, getSchoolFromEmail } = require("../../util/school.util");
 
 const type = UserType.STUDENT;
 
@@ -96,8 +96,20 @@ router.post(
   hasPermission(Permission.CREATE_STUDENT.key),
   async (req, res) => {
     try {
+      if (!req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      const providedPrefix = getSchoolFromEmail(req.body.email);
+      if (providedPrefix && providedPrefix !== req.schoolPrefix) {
+        return res.status(400).json({ message: "Email pertence a outra escola" });
+      }
+
+      const prefixedEmail = addSchoolPrefix(req.body.email, req.schoolPrefix);
+
       const user = await User.create({
         ...req.body,
+        email: prefixedEmail,
         type,
       });
 

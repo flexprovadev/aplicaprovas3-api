@@ -3,7 +3,7 @@ const router = express.Router();
 const { Course } = require("../../model");
 const { Permission } = require("../../enumerator");
 const { hasPermission } = require("../../middleware");
-const { createSchoolFilter } = require("../../util/school.util");
+const { addSchoolPrefix, createSchoolFilter } = require("../../util/school.util");
 
 router.get("", hasPermission(Permission.READ_COURSE.key), async (req, res) => {
   try {
@@ -44,8 +44,12 @@ router.post(
   hasPermission(Permission.CREATE_COURSE.key),
   async (req, res) => {
     try {
-      const { name } = req.body;
-      const course = await Course.create({ name });
+      if (!req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      const prefixedName = addSchoolPrefix(req.body.name, req.schoolPrefix);
+      const course = await Course.create({ name: prefixedName });
       const { uuid } = course;
       return res.json({ uuid });
     } catch (ex) {

@@ -3,7 +3,7 @@ const router = express.Router();
 const { User, Classroom } = require("../../model");
 const { Permission, UserType } = require("../../enumerator");
 const { hasPermission } = require("../../middleware");
-const { createSchoolFilter } = require("../../util/school.util");
+const { addSchoolPrefix, createSchoolFilter } = require("../../util/school.util");
 
 router.get(
   "",
@@ -58,12 +58,23 @@ router.post(
     try {
       const { name, level, year } = req.body;
 
+      if (!req.schoolPrefix) {
+        return res.status(400).json({ message: "Escola não identificada" });
+      }
+
+      const prefixedName = addSchoolPrefix(name, req.schoolPrefix);
+
       const students = await User.find({
         type: UserType.STUDENT,
         uuid: req.body.students,
       });
 
-      const classroom = await Classroom.create({ name, level, year, students });
+      const classroom = await Classroom.create({
+        name: prefixedName,
+        level,
+        year,
+        students,
+      });
 
       if (!classroom) {
         throw new Error("Erro ao criar turma");

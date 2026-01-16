@@ -15,7 +15,7 @@ const { DateTime } = require("luxon");
 const { applyTimezone } = require("../../util/date.util");
 const { generateArchive } = require("../../util/exam.export.util");
 const { importCsvAnswers } = require("../../util/import.csv.answers.util");
-const { createSchoolFilter } = require("../../util/school.util");
+const { addSchoolPrefix, createSchoolFilter } = require("../../util/school.util");
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -300,7 +300,12 @@ router.get(
 
 router.post("", hasPermission(Permission.CREATE_EXAM.key), async (req, res) => {
   try {
+    if (!req.schoolPrefix) {
+      return res.status(400).json({ message: "Escola não identificada" });
+    }
+
     const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
+    const prefixedName = addSchoolPrefix(req.body.name, req.schoolPrefix);
 
     const classrooms = await Classroom.find({
       uuid: classroomUuids,
@@ -308,6 +313,7 @@ router.post("", hasPermission(Permission.CREATE_EXAM.key), async (req, res) => {
 
     const exam = await Exam.create({
       ...req.body,
+      name: prefixedName,
       gradeStrategy,
       questions: normalizeQuestions(questions),
       classrooms,

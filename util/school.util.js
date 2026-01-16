@@ -72,11 +72,20 @@ const addSchoolPrefix = (value, schoolPrefix) => {
     return value;
   }
 
-  if (hasSchoolPrefix(value)) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
     return value;
   }
 
-  return `${normalizedPrefix}.${value}`;
+  const expectedPrefix = `${normalizedPrefix}.`;
+  const lowerValue = trimmedValue.toLowerCase();
+
+  if (lowerValue.startsWith(expectedPrefix)) {
+    const remainder = trimmedValue.slice(expectedPrefix.length);
+    return `${normalizedPrefix}.${remainder}`;
+  }
+
+  return `${normalizedPrefix}.${trimmedValue}`;
 };
 
 // Removes the school prefix when present; otherwise returns the original value.
