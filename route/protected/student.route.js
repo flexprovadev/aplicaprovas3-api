@@ -9,11 +9,15 @@ const {
   ClassroomValidator,
 } = require("../../util/import.util");
 const { encryptPassword } = require("../../util/password.util");
+const { createSchoolFilter } = require("../../util/school.util");
 
 const type = UserType.STUDENT;
 
 router.get("", hasPermission(Permission.READ_STUDENT.key), async (req, res) => {
   try {
+    const schoolFilter = createSchoolFilter(req.schoolPrefix, "email") || {};
+    const queryFilter = { type, ...schoolFilter };
+
     // Verifica se há parâmetros de paginação
     const hasPagination = req.query.page || req.query.limit;
 
@@ -30,7 +34,7 @@ router.get("", hasPermission(Permission.READ_STUDENT.key), async (req, res) => {
 
       // Busca paginada com contagem total
       const [users, total] = await Promise.all([
-        User.find({ type })
+        User.find(queryFilter)
           .select("uuid email name enabled")
           .populate({
             path: "classrooms",
@@ -40,13 +44,13 @@ router.get("", hasPermission(Permission.READ_STUDENT.key), async (req, res) => {
           .skip(skip)
           .limit(limit)
           .lean(),
-        User.countDocuments({ type }),
+        User.countDocuments(queryFilter),
       ]);
 
       return res.json({ data: users, total, page, limit });
     } else {
       // Modo compatibilidade: retorna array direto (para outros serviços que usam fetch())
-      const users = await User.find({ type })
+      const users = await User.find(queryFilter)
         .select("uuid email name enabled")
         .populate({
           path: "classrooms",

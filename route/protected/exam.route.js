@@ -15,6 +15,7 @@ const { DateTime } = require("luxon");
 const { applyTimezone } = require("../../util/date.util");
 const { generateArchive } = require("../../util/exam.export.util");
 const { importCsvAnswers } = require("../../util/import.csv.answers.util");
+const { createSchoolFilter } = require("../../util/school.util");
 
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -45,7 +46,9 @@ router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
   try {
     const studentsSelectFields = "-_id name email";
 
-    const exams = await Exam.find()
+    const examFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+
+    const exams = await Exam.find(examFilter)
       .populate([
         {
           path: "classrooms",

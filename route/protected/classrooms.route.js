@@ -3,13 +3,16 @@ const router = express.Router();
 const { User, Classroom } = require("../../model");
 const { Permission, UserType } = require("../../enumerator");
 const { hasPermission } = require("../../middleware");
+const { createSchoolFilter } = require("../../util/school.util");
 
 router.get(
   "",
   hasPermission(Permission.READ_CLASSROOM.key),
   async (req, res) => {
     try {
-      const classrooms = await Classroom.find()
+      const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+
+      const classrooms = await Classroom.find(classroomFilter)
         .select("uuid name year level shift enabled")
         .populate({ path: "students", select: "-_id uuid name email" })
         .sort({ name: 1, level: 1, year: 1 })

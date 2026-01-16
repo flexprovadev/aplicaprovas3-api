@@ -3,10 +3,13 @@ const router = express.Router();
 const { Course } = require("../../model");
 const { Permission } = require("../../enumerator");
 const { hasPermission } = require("../../middleware");
+const { createSchoolFilter } = require("../../util/school.util");
 
 router.get("", hasPermission(Permission.READ_COURSE.key), async (req, res) => {
   try {
-    const courses = await Course.find()
+    const courseFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+
+    const courses = await Course.find(courseFilter)
       .select("-_id uuid name enabled")
       .sort({ name: 1 })
       .lean();
