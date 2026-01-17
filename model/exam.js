@@ -25,6 +25,9 @@ const schemaObj = {
 
 const ExamSchema = new Schema(schemaObj, BaseSchemaOptions);
 
+// Supports prefix-based lookup by exam name.
+ExamSchema.index({ name: 1 });
+
 ExamSchema.virtual("examsInProgress", {
   ref: "ExamStudent",
   localField: "_id",

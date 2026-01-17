@@ -4,12 +4,15 @@ const { User, Role } = require("../../model");
 const { Permission, UserType } = require("../../enumerator");
 const { hasPermission } = require("../../middleware");
 const { encryptPassword } = require("../../util/password.util");
+const { createSchoolFilter } = require("../../util/school.util");
 
 const type = UserType.STAFF;
 
 router.get("", hasPermission(Permission.READ_STAFF.key), async (req, res) => {
   try {
-    const users = await User.find({ type, enabled: true })
+    const staffFilter = createSchoolFilter(req.schoolPrefix, "email") || {};
+
+    const users = await User.find({ type, enabled: true, ...staffFilter })
       .select("-_id uuid email name contactNumber enabled")
       .populate("roles")
       .sort({ email: 1 })
@@ -27,13 +30,15 @@ router.get(
     try {
       const { uuid } = req.params;
 
-      const user = await User.findOne({ uuid, type })
+      const staffFilter = createSchoolFilter(req.schoolPrefix, "email") || {};
+
+      const user = await User.findOne({ uuid, type, ...staffFilter })
         .select("uuid name email ")
         .populate({ path: "roles", select: "uuid name" })
         .lean();
 
       if (!user) {
-        throw new Error("Erro ao recuperar colaborador");
+        return res.status(404).json({ message: "Colaborador não encontrado" });
       }
 
       user.roles = user.roles.map((x) => x.uuid);
