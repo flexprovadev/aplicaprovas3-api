@@ -9,6 +9,9 @@ const getExtension = (contentType) => {
     "image/png": "png",
     "image/jpeg": "jpg",
     "application/pdf": "pdf",
+    "application/zip": "zip",
+    "image/tiff": "tif",
+    "image/tif": "tif",
   }[contentType];
 };
 
@@ -73,26 +76,32 @@ const getClient = () => {
 
 const defaultClient = getClient();
 
-const upload = (params, res) => {
+const buildUploadResult = (data, params) => {
+  const key = data?.Key || params?.Key;
+  const fallbackRegion =
+    config.s3.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+  const location =
+    data?.Location ||
+    (key
+      ? `https://${config.s3.bucket}.s3${fallbackRegion ? `.${fallbackRegion}` : ""}.amazonaws.com/${key}`
+      : "");
+  const filename = location.substring(location.lastIndexOf("/") + 1);
+  const uuid = filename.substring(0, filename.indexOf("."));
+  return { uuid, location };
+};
+
+const uploadToS3 = async (params) => {
   const uploader = new Upload({
     client: defaultClient,
     params,
   });
+  const data = await uploader.done();
+  return buildUploadResult(data, params);
+};
 
-  uploader
-    .done()
-    .then((data) => {
-      const key = data?.Key || params?.Key;
-      const fallbackRegion = config.s3.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
-      const location =
-        data?.Location ||
-        (key
-          ? `https://${config.s3.bucket}.s3${fallbackRegion ? `.${fallbackRegion}` : ""}.amazonaws.com/${key}`
-          : "");
-      const filename = location.substring(location.lastIndexOf("/") + 1);
-      const uuid = filename.substring(0, filename.indexOf("."));
-      return res.json({ uuid, location });
-    })
+const upload = (params, res) => {
+  uploadToS3(params)
+    .then((result) => res.json(result))
     .catch((err) => {
       console.error("Error uploading file to S3:", err);
       return res.status(500).json({ message: "Erro ao enviar arquivo" });
@@ -129,6 +138,13 @@ const doFinalkeyUpload = (req, res) => {
   upload(params, res);
 };
 
+const doAnswerSheetImageUpload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.ANSWER_SHEET_IMAGES}/${examUuid}`;
+  });
+  return uploadToS3(params);
+};
+
 const getObject = async (url) => {
   const pathname = url.substring(url.indexOf(config.s3.bucket));
   const fileKey = pathname.substring(pathname.indexOf("/") + 1);
@@ -154,4 +170,5 @@ module.exports = {
   doStudentUpload,
   doPreliminarkeyUpload,
   doFinalkeyUpload,
+  doAnswerSheetImageUpload,
 };

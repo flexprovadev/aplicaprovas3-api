@@ -3,7 +3,12 @@ const express = require("express");
 const router = express.Router();
 const { Classroom, Exam, ExamStudent, Course } = require("../../model");
 const multer = require("multer");
-const { doExamUpload, doPreliminarkeyUpload, doFinalkeyUpload } = require("../../util/s3.util");
+const {
+  doExamUpload,
+  doPreliminarkeyUpload,
+  doFinalkeyUpload,
+  doAnswerSheetImageUpload,
+} = require("../../util/s3.util");
 const {
   Permission,
   QuestionType,
@@ -17,11 +22,17 @@ const { generateArchive } = require("../../util/exam.export.util");
 const { importCsvAnswers } = require("../../util/import.csv.answers.util");
 const { addSchoolPrefix, createSchoolFilter } = require("../../util/school.util");
 
-const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_ANSWER_SHEET_IMAGE_SIZE_BYTES = 500 * 1024 * 1024; // 500MB (para imagens de folhas de respostas)
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
+});
+
+const uploadAnswerSheetImages = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_ANSWER_SHEET_IMAGE_SIZE_BYTES },
 });
 
 const questionFilter = (question) =>
@@ -281,7 +292,7 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl preliminarkeyURL finalkeyURL questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl preliminarkeyURL finalkeyURL answerSheetImages questions gradeStrategy gradeOptions"
         )
         .lean();
 
@@ -473,6 +484,96 @@ router.delete(
       return res.json({ message: "Prova removida com sucesso" });
     } catch (ex) {
       const { message = "Erro ao remover prova" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-answer-sheet-image",
+  uploadAnswerSheetImages.single("file"),
+  hasPermission(Permission.CREATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doAnswerSheetImageUpload(req, examUuid);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $push: { answerSheetImages: location } }
+      );
+
+      return res.json({ uuid, location });
+    } catch (ex) {
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.get(
+  "/:uuid/answer-sheet-images",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter)
+        .select("answerSheetImages")
+        .lean();
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      return res.json(exam.answerSheetImages || []);
+    } catch (ex) {
+      const { message = "Erro ao recuperar imagens" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/answer-sheet-images/:imageUrl",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid, imageUrl } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $pull: { answerSheetImages: imageUrl } }
+      );
+
+      return res.json({ message: "Imagem removida com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover imagem" } = ex;
       return res.status(400).json({ message });
     }
   }

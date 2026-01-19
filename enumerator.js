@@ -87,6 +87,7 @@ const StorageFolder = {
   EXAMS: "exams",
   PRELIMINARKEY: "preliminarkey",
   FINALKEY: "finalkey",
+  ANSWER_SHEET_IMAGES: "images",
 };
 
 const QuestionType = {

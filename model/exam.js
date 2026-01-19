@@ -14,6 +14,7 @@ const schemaObj = {
   documentUrl: { type: String },
   preliminarkeyURL: { type: String },
   finalkeyURL: { type: String },
+  answerSheetImages: [{ type: String }],
   questions: [{ type: Object }],
   gradeStrategy: {
     type: String,

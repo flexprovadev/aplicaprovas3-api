@@ -10,7 +10,7 @@ const { applyTimezone } = require("../../util/date.util");
 const { scheduleGrade } = require("../../util/grade.util");
 const { createSchoolFilter } = require("../../util/school.util");
 
-const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
 const upload = multer({
   storage: multer.memoryStorage(),
