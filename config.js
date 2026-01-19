@@ -23,7 +23,7 @@ module.exports = {
   database,
   isDev: process.env.DEV_MODE || false,
   exam: {
-    comingSoonMaxDays: process.env.COMING_SOON_MAX_DAYS || 7,
+    comingSoonMaxDays: process.env.COMING_SOON_MAX_DAYS || 60,
   },
   seed: {
     password: process.env.SEED_PASSWORD || "",

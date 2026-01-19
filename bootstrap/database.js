@@ -13,7 +13,7 @@ const { UserType, Permission, QuestionType } = require("../enumerator");
 const DAY_AS_TIMESTAMP = 24 * 60 * 60 * 1000;
 
 const SAMPLE_EXAM_URL =
-  "https://s3.sa-east-1.amazonaws.com/storage.eucorrijo.com/exams/5d8f051d-8188-4ca2-ab00-f1e20f72f5ff.pdf";
+  "https://staging2026.s3.us-east-1.amazonaws.com/2023-ENEM-1D-Prova.pdf";
 
 async function initializeDev() {
   console.log("Initializing development data");
@@ -23,100 +23,151 @@ async function initializeDev() {
   });
 
   await User.create({
-    email: "nunes.lfa@gmail.com",
+    email: "silvagirao@gmail.com",
+    password: "abcd1234",
+    type: UserType.SUPERUSER,
+  });
+
+  await User.create({
+    email: "escola1.superuser@flexprova.com",
     password: "abc123",
     type: UserType.SUPERUSER,
   });
 
   await User.create({
-    email: "romulo.nf@gmail.com",
+    email: "escola2.superuser@flexprova.com",
     password: "abc123",
     type: UserType.SUPERUSER,
   });
 
   await User.create({
-    email: "jon@doe.com",
-    name: "Jon Doe",
+    email: "escola1.colaborador@flexprova.com",
+    name: "Colaborador da Escola 1",
     password: "abc123",
-    contactNumber: "(45) 43534-5345",
+    contactNumber: "(11) 43534-5345",
+    type: UserType.STAFF,
+    roles: [coordenadorPerfil],
+  });
+
+  await User.create({
+    email: "escola2.colaborador@flexprova.com",
+    name: "Colaborador da Escola 2",
+    password: "abc123",
+    contactNumber: "(22) 43534-5345",
     type: UserType.STAFF,
     roles: [coordenadorPerfil],
   });
 
   const studentA = await User.create({
-    email: "studenta@gmail.com",
-    name: "Student A",
+    email: "escola1.aluno1@flexprova.com",
+    name: "Aluno 1 da Escola 1",
     password: "abc123",
     type: UserType.STUDENT,
   });
+
   const studentB = await User.create({
-    email: "studentb@gmail.com",
-    name: "Student B",
+    email: "escola2.aluno1@flexprova.com",
+    name: "Aluno 1 da Escola 2",
     password: "abc123",
     type: UserType.STUDENT,
   });
+
   const studentC = await User.create({
-    email: "studentc@gmail.com",
-    name: "Student C",
+    email: "escola1.aluno2@flexprova.com",
+    name: "Aluno 2 da Escola 1",
+    password: "abc123",
+    type: UserType.STUDENT,
+  });
+
+  const studentD = await User.create({
+    email: "escola2.aluno2@flexprova.com",
+    name: "Aluno 2 da Escola 2",
+    password: "abc123",
+    type: UserType.STUDENT,
+  });
+
+  const studentE = await User.create({
+    email: "escola1.aluno3@flexprova.com",
+    name: "Aluno 3 da Escola 1",
+    password: "abc123",
+    type: UserType.STUDENT,
+  });
+
+  const studentF = await User.create({
+    email: "escola2.aluno3@flexprova.com",
+    name: "Aluno 3 da Escola 2",
     password: "abc123",
     type: UserType.STUDENT,
   });
 
   const teacherA = await User.create({
-    email: "teachera@gmail.com",
+    email: "escola1.teachera@gmail.com",
     name: "Teacher A",
     password: "abcd1234",
     type: UserType.TEACHER,
   });
+
   const teacherB = await User.create({
-    email: "teacherb@gmail.com",
+    email: "escola1.teacherb@gmail.com",
     name: "Teacher B",
     password: "abcd1234",
     type: UserType.TEACHER,
   });
+
   const teacherC = await User.create({
-    email: "teacherc@gmail.com",
+    email: "escola2.teacherc@gmail.com",
     name: "Teacher C",
     password: "abcd1234",
     type: UserType.TEACHER,
   });
 
   const classroomA = await Classroom.create({
-    name: "A",
-    year: 2021,
-    level: "1",
-    students: [studentA, studentB],
-  });
-
-  await Classroom.create({
-    name: "B",
-    year: 2021,
-    level: "1",
+    name: "escola1.A",
+    year: 2026,
+    level: "Médio",
     students: [studentA, studentC],
   });
 
-  await Classroom.create({
-    name: "C",
-    year: 2021,
-    level: "1",
-    students: [studentB, studentC],
+  const classroomB = await Classroom.create({
+    name: "escola1.B",
+    year: 2026,
+    level: "Médio",
+    students: [studentA, studentF],
   });
 
-  ["A", "B", "C"].forEach(async (name) => {
-    [2018, 2019, 2020].forEach(async (year) => {
+  const classroomC = await Classroom.create({
+    name: "escola2.A",
+    year: 2026,
+    level: "1",
+    students: [studentB, studentD],
+  });
+
+  const classroomD = await Classroom.create({
+    name: "escola2.B",
+    year: 2026,
+    level: "1",
+    students: [studentB, studentF],
+  });
+
+/*  ["A", "B", "C"].forEach(async (name) => {
+    [2025, 2026].forEach(async (year) => {
       ["1", "2", "3"].forEach(async (level) => {
         await Classroom.create({ name, year, level });
       });
     });
   });
+*/
 
-  const courseA = await Course.create({ name: "Portugues" });
-  const courseB = await Course.create({ name: "Matematica" });
+  const courseA = await Course.create({ name: "escola1.Portugues" });
+  const courseB = await Course.create({ name: "escola1.Matematica" });
+  const courseC = await Course.create({ name: "escola2.Fisica" });
+  const courseD = await Course.create({ name: "escola2.Quimica" });
+
   const formatDate = (date) => new Date(date).toISOString();
 
   await Exam.create({
     uuid: "dd4e5003-0041-4731-9beb-790c7573beaa",
-    name: "Prova de Matematica",
+    name: "escola1.Simulado 1",
     startAt: formatDate(Date.now() - DAY_AS_TIMESTAMP),
     endAt: formatDate(Date.now() + 1000), // 30 seconds
     documentUrl: SAMPLE_EXAM_URL,
@@ -125,7 +176,17 @@ async function initializeDev() {
   });
 
   await Exam.create({
-    name: "Prova de Fisica",
+    uuid: "80df7e04-086d-4d0e-bcca-c173e4446e07",
+    name: "escola2.Simulado 2",
+    startAt: formatDate(Date.now() - DAY_AS_TIMESTAMP),
+    endAt: formatDate(Date.now() + 1000), // 30 seconds
+    documentUrl: SAMPLE_EXAM_URL,
+    questions: [],
+    classrooms: [classroomC],
+  });
+
+  await Exam.create({
+    name: "escola1.Prova de Fisica",
     startAt: formatDate(Date.now()),
     endAt: formatDate(Date.now() + DAY_AS_TIMESTAMP),
     documentUrl: SAMPLE_EXAM_URL,
@@ -134,16 +195,16 @@ async function initializeDev() {
   });
 
   await Exam.create({
-    name: "Prova de Quimica",
+    name: "escola2.Prova de Quimica",
     startAt: formatDate(Date.now() + DAY_AS_TIMESTAMP * 3),
     documentUrl: SAMPLE_EXAM_URL,
     questions: [],
-    classrooms: [classroomA],
+    classrooms: [classroomC],
   });
 
   const exam = await Exam.create({
     uuid: "1192c2e1-c849-4a9d-a91b-b28eed94dff6",
-    name: "Prova de Portugues",
+    name: "escola1.Prova de Portugues",
     classrooms: [classroomA],
     documentUrl: SAMPLE_EXAM_URL,
     questions: [
@@ -217,7 +278,7 @@ async function initializeDev() {
       },
       "c01b7a3a-923d-4eec-ad75-40872155c549": {
         value:
-          "https://s3.sa-east-1.amazonaws.com/storage.eucorrijo.com/cartaozinho.jpg",
+          "https://staging2026.s3.us-east-1.amazonaws.com/discursiva.jpeg",
         skipped: false,
       },
     },
@@ -226,7 +287,7 @@ async function initializeDev() {
   await ExamStudent.create({
     uuid: "b71f40d4-8e6b-442f-bc92-2c4ad4d75bc2",
     exam,
-    student: studentB,
+    student: studentC,
     answers: {
       "7c900b4e-70bb-49ca-802e-7461215dc431": {
         value: "A",
@@ -250,7 +311,7 @@ async function initializeDev() {
       },
       "c01b7a3a-923d-4eec-ad75-40872155c549": {
         value:
-          "https://s3.sa-east-1.amazonaws.com/storage.eucorrijo.com/cartaozinho.jpg",
+          "https://staging2026.s3.us-east-1.amazonaws.com/discursiva.jpeg",
         skipped: false,
       },
     },
@@ -260,11 +321,6 @@ async function initializeDev() {
 
 async function initializeProd() {
   console.log("Initializing production data");
-  await User.create({
-    email: "professor@eucorrijo.com",
-    password: "abcd1234",
-    type: UserType.TEACHER,
-  });
 
   await User.create({
     email: "silvagirao@gmail.com",
