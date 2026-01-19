@@ -115,6 +115,20 @@ const doStudentUpload = (examStudent, req, res) => {
   upload(params, res);
 };
 
+const doPreliminarkeyUpload = (req, res) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.PRELIMINARKEY}`;
+  });
+  upload(params, res);
+};
+
+const doFinalkeyUpload = (req, res) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.FINALKEY}`;
+  });
+  upload(params, res);
+};
+
 const getObject = async (url) => {
   const pathname = url.substring(url.indexOf(config.s3.bucket));
   const fileKey = pathname.substring(pathname.indexOf("/") + 1);
@@ -138,4 +152,6 @@ module.exports = {
   getObject,
   doExamUpload,
   doStudentUpload,
+  doPreliminarkeyUpload,
+  doFinalkeyUpload,
 };

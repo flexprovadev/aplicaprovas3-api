@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const { Classroom, Exam, ExamStudent, Course } = require("../../model");
 const multer = require("multer");
-const { doExamUpload } = require("../../util/s3.util");
+const { doExamUpload, doPreliminarkeyUpload, doFinalkeyUpload } = require("../../util/s3.util");
 const {
   Permission,
   QuestionType,
@@ -281,7 +281,7 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl preliminarkeyURL finalkeyURL questions gradeStrategy gradeOptions"
         )
         .lean();
 
@@ -485,6 +485,32 @@ router.post(
   async (req, res) => {
     try {
       doExamUpload(req, res);
+    } catch (ex) {
+      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+    }
+  }
+);
+
+router.post(
+  "/upload-preliminarkey",
+  upload.single("file"),
+  hasPermission(Permission.CREATE_EXAM.key),
+  async (req, res) => {
+    try {
+      doPreliminarkeyUpload(req, res);
+    } catch (ex) {
+      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+    }
+  }
+);
+
+router.post(
+  "/upload-finalkey",
+  upload.single("file"),
+  hasPermission(Permission.CREATE_EXAM.key),
+  async (req, res) => {
+    try {
+      doFinalkeyUpload(req, res);
     } catch (ex) {
       return res.status(400).json({ message: "Erro ao enviar arquivo" });
     }
