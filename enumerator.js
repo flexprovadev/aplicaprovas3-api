@@ -85,6 +85,7 @@ const UserType = {
 
 const StorageFolder = {
   EXAMS: "exams",
+  NAMELIST: "namelist",
   PRELIMINARKEY: "preliminarkey",
   FINALKEY: "finalkey",
   ANSWER_SHEET_IMAGES: "images",

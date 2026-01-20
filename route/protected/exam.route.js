@@ -7,6 +7,7 @@ const {
   doExamUpload,
   doPreliminarkeyUpload,
   doFinalkeyUpload,
+  doNamelistUpload,
   doAnswerSheetImageUpload,
 } = require("../../util/s3.util");
 const {
@@ -292,7 +293,7 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl preliminarkeyURL finalkeyURL answerSheetImages questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages questions gradeStrategy gradeOptions"
         )
         .lean();
 
@@ -612,6 +613,19 @@ router.post(
   async (req, res) => {
     try {
       doFinalkeyUpload(req, res);
+    } catch (ex) {
+      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+    }
+  }
+);
+
+router.post(
+  "/upload-namelist",
+  upload.single("file"),
+  hasPermission(Permission.CREATE_EXAM.key),
+  async (req, res) => {
+    try {
+      doNamelistUpload(req, res);
     } catch (ex) {
       return res.status(400).json({ message: "Erro ao enviar arquivo" });
     }

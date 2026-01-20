@@ -12,6 +12,18 @@ const getExtension = (contentType) => {
     "application/zip": "zip",
     "image/tiff": "tif",
     "image/tif": "tif",
+    // Tipos para namelist
+    "text/plain": "txt",
+    "text/markdown": "md",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-excel.sheet.macroEnabled.12": "xlsm",
+    "text/csv": "csv",
+    "application/vnd.oasis.opendocument.text": "odt",
+    "application/vnd.oasis.opendocument.spreadsheet": "ods",
+    "application/msword": "doc",
+    "application/rtf": "rtf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   }[contentType];
 };
 
@@ -138,6 +150,13 @@ const doFinalkeyUpload = (req, res) => {
   upload(params, res);
 };
 
+const doNamelistUpload = (req, res) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.NAMELIST}`;
+  });
+  upload(params, res);
+};
+
 const doAnswerSheetImageUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
     return `${StorageFolder.ANSWER_SHEET_IMAGES}/${examUuid}`;
@@ -170,5 +189,6 @@ module.exports = {
   doStudentUpload,
   doPreliminarkeyUpload,
   doFinalkeyUpload,
+  doNamelistUpload,
   doAnswerSheetImageUpload,
 };

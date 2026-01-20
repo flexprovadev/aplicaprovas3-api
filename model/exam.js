@@ -12,6 +12,7 @@ const schemaObj = {
   durationExam: { type: String },
   instructions: { type: String },
   documentUrl: { type: String },
+  namelistURL: { type: String },
   preliminarkeyURL: { type: String },
   finalkeyURL: { type: String },
   answerSheetImages: [{ type: String }],
