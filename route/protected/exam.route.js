@@ -746,23 +746,13 @@ router.get("/:uuid/take", isStudent, async (req, res) => {
       return res.redirect(`/exam-students/${uuid}`);
     };
 
-    if (
-      await ExamStudent.exists({
-        exam,
-        student,
-        status: ExamStudentStatus.SUBMITTED,
-      })
-    ) {
-      throw new Error("Aluno não pode realizar a mesma prova duas vezes");
-    }
-
-    let examStudent = await ExamStudent.findOne({
-      exam,
-      student,
-      status: ExamStudentStatus.PROGRESS,
-    });
+    // Busca qualquer registro existente (independente do status)
+    let examStudent = await ExamStudent.findOne({ exam, student });
 
     if (examStudent) {
+      if (examStudent.status === ExamStudentStatus.SUBMITTED) {
+        throw new Error("Aluno não pode realizar a mesma prova duas vezes");
+      }
       return redirect(examStudent); // prova em andamento
     }
 
@@ -788,7 +778,18 @@ router.get("/:uuid/take", isStudent, async (req, res) => {
       return acc;
     }, {});
 
-    examStudent = await ExamStudent.create({ exam, student, answers });
+    try {
+      examStudent = await ExamStudent.create({ exam, student, answers });
+    } catch (error) {
+      // Se E11000 (duplicate key), outra requisição criou primeiro - race condition
+      if (error.code === 11000) {
+        examStudent = await ExamStudent.findOne({ exam, student });
+        if (examStudent) {
+          return redirect(examStudent);
+        }
+      }
+      throw error;
+    }
 
     redirect(examStudent);
   } catch (ex) {
