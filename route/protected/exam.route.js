@@ -493,7 +493,7 @@ router.delete(
 router.post(
   "/:uuid/upload-answer-sheet-image",
   uploadAnswerSheetImages.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
       const { uuid: examUuid } = req.params;
@@ -583,7 +583,7 @@ router.delete(
 router.post(
   "/upload",
   upload.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
       doExamUpload(req, res);
@@ -596,7 +596,7 @@ router.post(
 router.post(
   "/upload-preliminarkey",
   upload.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
       doPreliminarkeyUpload(req, res);
@@ -609,7 +609,7 @@ router.post(
 router.post(
   "/upload-finalkey",
   upload.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
       doFinalkeyUpload(req, res);
@@ -622,7 +622,7 @@ router.post(
 router.post(
   "/upload-namelist",
   upload.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
       doNamelistUpload(req, res);
@@ -635,7 +635,7 @@ router.post(
 router.post(
   "/import-questions",
   upload.single("file"),
-  hasPermission(Permission.CREATE_EXAM.key),
+  hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     const errors = [];
 
