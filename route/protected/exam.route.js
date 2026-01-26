@@ -597,40 +597,82 @@ router.post(
 );
 
 router.post(
-  "/upload-preliminarkey",
+  "/:uuid/upload-preliminarkey",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
-      doPreliminarkeyUpload(req, res);
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doPreliminarkeyUpload(req, examUuid);
+      return res.json({ uuid, location });
     } catch (ex) {
-      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
     }
   }
 );
 
 router.post(
-  "/upload-finalkey",
+  "/:uuid/upload-finalkey",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
-      doFinalkeyUpload(req, res);
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doFinalkeyUpload(req, examUuid);
+      return res.json({ uuid, location });
     } catch (ex) {
-      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
     }
   }
 );
 
 router.post(
-  "/upload-namelist",
+  "/:uuid/upload-namelist",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
-      doNamelistUpload(req, res);
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doNamelistUpload(req, examUuid);
+      return res.json({ uuid, location });
     } catch (ex) {
-      return res.status(400).json({ message: "Erro ao enviar arquivo" });
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
     }
   }
 );

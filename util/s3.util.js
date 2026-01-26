@@ -136,30 +136,30 @@ const doStudentUpload = (examStudent, req, res) => {
   upload(params, res);
 };
 
-const doPreliminarkeyUpload = (req, res) => {
+const doPreliminarkeyUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
-    return `${StorageFolder.PRELIMINARKEY}`;
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.PRELIMINARKEY}`;
   });
-  upload(params, res);
+  return uploadToS3(params);
 };
 
-const doFinalkeyUpload = (req, res) => {
+const doFinalkeyUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
-    return `${StorageFolder.FINALKEY}`;
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.FINALKEY}`;
   });
-  upload(params, res);
+  return uploadToS3(params);
 };
 
-const doNamelistUpload = (req, res) => {
+const doNamelistUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
-    return `${StorageFolder.NAMELIST}`;
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.NAMELIST}`;
   });
-  upload(params, res);
+  return uploadToS3(params);
 };
 
 const doAnswerSheetImageUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
-    return `${StorageFolder.ANSWER_SHEET_IMAGES}/${examUuid}`;
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.ANSWER_SHEET_IMAGES}`;
   });
   return uploadToS3(params);
 };
