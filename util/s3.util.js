@@ -34,6 +34,21 @@ const maybeAddStoragePrefix = (key) => {
   return key;
 };
 
+const sanitizeFilename = (name) => {
+  if (!name) {
+    return "";
+  }
+
+  const nameWithoutExt = name.replace(/\.[^/.]+$/, "");
+
+  return nameWithoutExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9.-]/g, "_")
+    .replace(/_+/g, "_")
+    .substring(0, 80);
+};
+
 const buildBaseUploadParams = (req) => {
   const file = req.file;
 
@@ -55,7 +70,12 @@ const buildBaseUploadParams = (req) => {
 const buildUploadParams = (req, prefixGenerator) => {
   const baseParams = buildBaseUploadParams(req);
   const extension = getExtension(baseParams.ContentType);
-  const filename = `${uuidv4()}.${extension}`;
+  const uuid = uuidv4();
+  const originalName = req.file?.originalname || "";
+  const sanitizedName = sanitizeFilename(originalName);
+  const filename = sanitizedName
+    ? `${uuid}_${sanitizedName}.${extension}`
+    : `${uuid}.${extension}`;
   const prefix = prefixGenerator();
   return {
     ...baseParams,
@@ -88,6 +108,14 @@ const getClient = () => {
 
 const defaultClient = getClient();
 
+const extractOriginalName = (filename) => {
+  const underscoreIdx = filename.indexOf("_");
+  if (underscoreIdx > 30 && underscoreIdx < 40) {
+    return filename.substring(underscoreIdx + 1);
+  }
+  return filename;
+};
+
 const buildUploadResult = (data, params) => {
   const key = data?.Key || params?.Key;
   const fallbackRegion =
@@ -98,8 +126,9 @@ const buildUploadResult = (data, params) => {
       ? `https://${config.s3.bucket}.s3${fallbackRegion ? `.${fallbackRegion}` : ""}.amazonaws.com/${key}`
       : "");
   const filename = location.substring(location.lastIndexOf("/") + 1);
-  const uuid = filename.substring(0, filename.indexOf("."));
-  return { uuid, location };
+  const uuid = filename.split("_")[0].split(".")[0];
+  const originalName = extractOriginalName(filename);
+  return { uuid, location, originalName };
 };
 
 const uploadToS3 = async (params) => {
