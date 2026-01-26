@@ -9,6 +9,9 @@ const {
   doFinalkeyUpload,
   doNamelistUpload,
   doAnswerSheetImageUpload,
+  doClassification1Upload,
+  doClassification2Upload,
+  doIndividualResultsUpload,
 } = require("../../util/s3.util");
 const {
   Permission,
@@ -293,7 +296,7 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages classification1URL classification2URL individualResultsURLs questions gradeStrategy gradeOptions"
         )
         .lean();
 
@@ -628,6 +631,223 @@ router.post(
       doNamelistUpload(req, res);
     } catch (ex) {
       return res.status(400).json({ message: "Erro ao enviar arquivo" });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-classification-1",
+  upload.single("file"),
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doClassification1Upload(req, examUuid);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { classification1URL: location }
+      );
+
+      return res.json({ uuid, location });
+    } catch (ex) {
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-classification-2",
+  upload.single("file"),
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const { uuid, location } = await doClassification2Upload(req, examUuid);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { classification2URL: location }
+      );
+
+      return res.json({ uuid, location });
+    } catch (ex) {
+      const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-individual-results",
+  uploadAnswerSheetImages.array("files"),
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const results = [];
+      const locations = [];
+      for (const file of req.files) {
+        const singleFileReq = { ...req, file };
+        const { uuid, location } = await doIndividualResultsUpload(singleFileReq, examUuid);
+        results.push({ uuid, location });
+        locations.push(location);
+      }
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $push: { individualResultsURLs: { $each: locations } } }
+      );
+
+      return res.json({ locations, results });
+    } catch (ex) {
+      const { message = "Erro ao enviar arquivos" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.get(
+  "/:uuid/classification-1",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter)
+        .select("classification1URL")
+        .lean();
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      return res.json({ url: exam.classification1URL || null });
+    } catch (ex) {
+      const { message = "Erro ao recuperar classificação" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.get(
+  "/:uuid/classification-2",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter)
+        .select("classification2URL")
+        .lean();
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      return res.json({ url: exam.classification2URL || null });
+    } catch (ex) {
+      const { message = "Erro ao recuperar classificação" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.get(
+  "/:uuid/individual-results",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter)
+        .select("individualResultsURLs")
+        .lean();
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      return res.json(exam.individualResultsURLs || []);
+    } catch (ex) {
+      const { message = "Erro ao recuperar resultados individuais" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/individual-results/:fileUrl",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid, fileUrl } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $pull: { individualResultsURLs: fileUrl } }
+      );
+
+      return res.json({ message: "Resultado individual removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover resultado individual" } = ex;
+      return res.status(400).json({ message });
     }
   }
 );

@@ -89,6 +89,9 @@ const StorageFolder = {
   PRELIMINARKEY: "preliminarkey",
   FINALKEY: "finalkey",
   ANSWER_SHEET_IMAGES: "images",
+  CLASSIFICATION_1: "clas1",
+  CLASSIFICATION_2: "clas2",
+  INDIVIDUAL_RESULTS: "individual",
 };
 
 const QuestionType = {

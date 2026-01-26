@@ -164,6 +164,27 @@ const doAnswerSheetImageUpload = (req, examUuid) => {
   return uploadToS3(params);
 };
 
+const doClassification1Upload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_1}`;
+  });
+  return uploadToS3(params);
+};
+
+const doClassification2Upload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_2}`;
+  });
+  return uploadToS3(params);
+};
+
+const doIndividualResultsUpload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.INDIVIDUAL_RESULTS}`;
+  });
+  return uploadToS3(params);
+};
+
 const getObject = async (url) => {
   const pathname = url.substring(url.indexOf(config.s3.bucket));
   const fileKey = pathname.substring(pathname.indexOf("/") + 1);
@@ -191,4 +212,7 @@ module.exports = {
   doFinalkeyUpload,
   doNamelistUpload,
   doAnswerSheetImageUpload,
+  doClassification1Upload,
+  doClassification2Upload,
+  doIndividualResultsUpload,
 };
