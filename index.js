@@ -61,7 +61,15 @@ databaseConnection.on("error", (error) => {
   console.log(`Error connecting to database: ${error}`);
 });
 
-databaseConnection.on("open", () => {
+databaseConnection.on("disconnected", () => {
+  console.warn("MongoDB disconnected. Mongoose will attempt to reconnect...");
+});
+
+databaseConnection.on("reconnected", () => {
+  console.log("MongoDB reconnected successfully.");
+});
+
+databaseConnection.once("open", () => {
   console.log("Connected to MongoDB. Starting server...");
   app.listen(config.server_port, () => {
     console.log(`Server running on port ${config.server_port}`);
