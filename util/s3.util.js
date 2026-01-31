@@ -214,6 +214,13 @@ const doIndividualResultsUpload = (req, examUuid) => {
   return uploadToS3(params);
 };
 
+const doPrintableAnswerSheetUpload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.PRINTABLE_ANSWER_SHEETS}`;
+  });
+  return uploadToS3(params);
+};
+
 const getObject = async (url) => {
   const pathname = url.substring(url.indexOf(config.s3.bucket));
   const fileKey = pathname.substring(pathname.indexOf("/") + 1);
@@ -244,4 +251,5 @@ module.exports = {
   doClassification1Upload,
   doClassification2Upload,
   doIndividualResultsUpload,
+  doPrintableAnswerSheetUpload,
 };

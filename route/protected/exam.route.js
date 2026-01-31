@@ -12,6 +12,7 @@ const {
   doClassification1Upload,
   doClassification2Upload,
   doIndividualResultsUpload,
+  doPrintableAnswerSheetUpload,
 } = require("../../util/s3.util");
 const {
   Permission,
@@ -56,6 +57,13 @@ const questionMapper = (question) => ({
 
 const normalizeQuestions = (questions = []) =>
   questions.filter(questionFilter).map(questionMapper);
+
+const canDownloadResults = (user) => {
+  if (!user) {
+    return false;
+  }
+  return user.getPermissions().includes(Permission.DOWNLOAD_RESULTS.key);
+};
 
 router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
   try {
@@ -296,12 +304,18 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages classification1URL classification2URL individualResultsURLs questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages printableAnswerSheetURLs classification1URL classification2URL individualResultsURLs questions gradeStrategy gradeOptions"
         )
         .lean();
 
       if (!exam) {
         throw new Error("Erro ao recuperar prova");
+      }
+
+      if (!canDownloadResults(req.user)) {
+        exam.classification1URL = null;
+        exam.classification2URL = null;
+        exam.individualResultsURLs = [];
       }
 
       const courseUuids = exam.questions.reduce((acc, { course }) => {
@@ -584,6 +598,106 @@ router.delete(
 );
 
 router.post(
+  "/:uuid/upload-printable-answer-sheets",
+  uploadAnswerSheetImages.array("files"),
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const results = [];
+      const locations = [];
+      for (const file of req.files) {
+        const singleFileReq = { ...req, file };
+        const { uuid, location } = await doPrintableAnswerSheetUpload(
+          singleFileReq,
+          examUuid
+        );
+        results.push({ uuid, location });
+        locations.push(location);
+      }
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $push: { printableAnswerSheetURLs: { $each: locations } } }
+      );
+
+      return res.json({ locations, results });
+    } catch (ex) {
+      const { message = "Erro ao enviar arquivos" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.get(
+  "/:uuid/printable-answer-sheets",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter)
+        .select("printableAnswerSheetURLs")
+        .lean();
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      return res.json(exam.printableAnswerSheetURLs || []);
+    } catch (ex) {
+      const { message = "Erro ao recuperar cartões-resposta" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/printable-answer-sheets/:fileUrl",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid, fileUrl } = req.params;
+      const examFilter = {
+        uuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $pull: { printableAnswerSheetURLs: fileUrl } }
+      );
+
+      return res.json({ message: "Cartão-resposta removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover cartão-resposta" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
   "/upload",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -788,6 +902,10 @@ router.get(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!canDownloadResults(req.user)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
       const { uuid } = req.params;
       const examFilter = {
         uuid,
@@ -815,6 +933,10 @@ router.get(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!canDownloadResults(req.user)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
       const { uuid } = req.params;
       const examFilter = {
         uuid,
@@ -842,6 +964,10 @@ router.get(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!canDownloadResults(req.user)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
       const { uuid } = req.params;
       const examFilter = {
         uuid,

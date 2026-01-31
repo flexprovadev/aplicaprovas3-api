@@ -74,6 +74,11 @@ const Permission = {
   EXPORT_DOCUMENT: { key: "export-document", label: "Exportar", context: "Document" },
   
   UNLOCK_MODEL: { key: "unlock-model", label: "Desbloquear", context: "Modelo" },
+  DOWNLOAD_RESULTS: {
+    key: "download-results",
+    label: "Baixar",
+    context: "Resultados",
+  },
 };
 
 const UserType = {
@@ -92,6 +97,7 @@ const StorageFolder = {
   CLASSIFICATION_1: "clas1",
   CLASSIFICATION_2: "clas2",
   INDIVIDUAL_RESULTS: "individual",
+  PRINTABLE_ANSWER_SHEETS: "printable-answer-sheets",
 };
 
 const QuestionType = {
