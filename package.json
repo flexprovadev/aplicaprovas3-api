@@ -1,6 +1,6 @@
 {
-  "name": "eucorrijo-api",
-  "version": "3.1.3",
+  "name": "flexprova-api",
+  "version": "3.1.4",
   "main": "index.js",
   "repository": "git@github.com:silvagirao/eucorrijo-api.git",
   "license": "MIT",
