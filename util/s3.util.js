@@ -1,6 +1,7 @@
 const config = require("../config");
-const { S3Client, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, HeadObjectCommand, GetObjectCommand, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { v4: uuidv4 } = require("uuid");
 const { StorageFolder } = require("../enumerator");
 
@@ -131,6 +132,49 @@ const buildUploadResult = (data, params) => {
   return { uuid, location, originalName };
 };
 
+const buildPublicUrl = (key) => {
+  const fallbackRegion =
+    config.s3.region || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
+  return `https://${config.s3.bucket}.s3${fallbackRegion ? `.${fallbackRegion}` : ""}.amazonaws.com/${key}`;
+};
+
+const createPresignedUpload = async ({ prefix, contentType, originalName, expiresInSeconds }) => {
+  const extension = getExtension(contentType);
+  if (!extension) {
+    throw new Error(`Invalid content type: ${contentType}`);
+  }
+
+  const uuid = uuidv4();
+  const sanitizedName = sanitizeFilename(originalName);
+  const filename = sanitizedName
+    ? `${uuid}_${sanitizedName}.${extension}`
+    : `${uuid}.${extension}`;
+  const key = maybeAddStoragePrefix(`${prefix}/${filename}`);
+
+  const command = new PutObjectCommand({
+    Bucket: config.s3.bucket,
+    Key: key,
+    ContentType: contentType,
+    ACL: "public-read",
+  });
+
+  const uploadUrl = await getSignedUrl(defaultClient, command, {
+    expiresIn: expiresInSeconds || 300,
+  });
+
+  const location = buildPublicUrl(key);
+
+  return {
+    uuid,
+    key,
+    uploadUrl,
+    location,
+    headers: {
+      "Content-Type": contentType,
+    },
+  };
+};
+
 const uploadToS3 = async (params) => {
   const uploader = new Upload({
     client: defaultClient,
@@ -252,4 +296,6 @@ module.exports = {
   doClassification2Upload,
   doIndividualResultsUpload,
   doPrintableAnswerSheetUpload,
+  buildPublicUrl,
+  createPresignedUpload,
 };

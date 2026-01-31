@@ -13,11 +13,14 @@ const {
   doClassification2Upload,
   doIndividualResultsUpload,
   doPrintableAnswerSheetUpload,
+  createPresignedUpload,
+  buildPublicUrl,
 } = require("../../util/s3.util");
 const {
   Permission,
   QuestionType,
   ExamStudentStatus,
+  StorageFolder,
 } = require("../../enumerator");
 const { hasPermission, isStudent } = require("../../middleware");
 const { v4: uuidv4 } = require("uuid");
@@ -540,6 +543,77 @@ router.post(
   }
 );
 
+router.post(
+  "/:uuid/answer-sheet-images/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.ANSWER_SHEET_IMAGES}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/answer-sheet-images/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.ANSWER_SHEET_IMAGES}`;
+      if (!key || !key.includes(expectedPrefix)) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $push: { answerSheetImages: location } }
+      );
+
+      return res.json({ location });
+    } catch (ex) {
+      const { message = "Erro ao confirmar upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
 router.get(
   "/:uuid/answer-sheet-images",
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -698,6 +772,28 @@ router.delete(
 );
 
 router.post(
+  "/upload/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { name, type } = req.body;
+
+      const prefix = `${StorageFolder.EXAMS}`;
+      const { uuid, key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ uuid, key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
   "/upload",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -738,6 +834,39 @@ router.post(
 );
 
 router.post(
+  "/:uuid/upload-preliminarkey/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.PRELIMINARKEY}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
   "/:uuid/upload-finalkey",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -759,6 +888,72 @@ router.post(
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-finalkey/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.FINALKEY}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-namelist/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.NAMELIST}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -825,6 +1020,77 @@ router.post(
 );
 
 router.post(
+  "/:uuid/upload-classification-1/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_1}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-classification-1/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_1}`;
+      if (!key || !key.includes(expectedPrefix)) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { classification1URL: location }
+      );
+
+      return res.json({ location });
+    } catch (ex) {
+      const { message = "Erro ao confirmar upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
   "/:uuid/upload-classification-2",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -852,6 +1118,77 @@ router.post(
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-classification-2/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_2}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-classification-2/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.CLASSIFICATION_2}`;
+      if (!key || !key.includes(expectedPrefix)) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { classification2URL: location }
+      );
+
+      return res.json({ location });
+    } catch (ex) {
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -892,6 +1229,77 @@ router.post(
       return res.json({ locations, results });
     } catch (ex) {
       const { message = "Erro ao enviar arquivos" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/individual-results/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.INDIVIDUAL_RESULTS}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/individual-results/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.INDIVIDUAL_RESULTS}`;
+      if (!key || !key.includes(expectedPrefix)) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { $push: { individualResultsURLs: location } }
+      );
+
+      return res.json({ location });
+    } catch (ex) {
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }

@@ -3,8 +3,8 @@ const multer = require("multer");
 const router = express.Router();
 const { ExamStudent, Course } = require("../../model");
 const { isStudent } = require("../../middleware");
-const { ExamStudentStatus } = require("../../enumerator");
-const { doStudentUpload } = require("../../util/s3.util");
+const { ExamStudentStatus, StorageFolder } = require("../../enumerator");
+const { doStudentUpload, createPresignedUpload } = require("../../util/s3.util");
 const { isQuestionAnswerValid } = require("../../util/question.util");
 const { applyTimezone } = require("../../util/date.util");
 const { scheduleGrade } = require("../../util/grade.util");
@@ -169,6 +169,50 @@ router.post("/:uuid/submit", isStudent, async (req, res) => {
     return res.status(400).json({ message });
   }
 });
+
+router.post(
+  "/:uuid/upload/presign",
+  isStudent,
+  async (req, res) => {
+    try {
+      const { user: student } = req;
+      const { uuid } = req.params;
+      const { name, type } = req.body;
+
+      const examMatch = createSchoolFilter(req.schoolPrefix, "name");
+
+      const examStudent = await ExamStudent.findOne({
+        student,
+        uuid,
+        status: ExamStudentStatus.PROGRESS,
+      })
+        .populate({
+          path: "exam",
+          ...(examMatch ? { match: examMatch } : {}),
+        })
+        .lean();
+
+      if (!examStudent || !examStudent.exam) {
+        throw new Error("Prova não encontrada ou não está em progresso");
+      }
+
+      const { uuid: examStudentUuid, exam } = examStudent;
+      const { uuid: examUuid } = exam;
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${examStudentUuid}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
 
 router.post(
   "/:uuid/upload",

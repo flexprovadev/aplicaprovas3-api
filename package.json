@@ -11,6 +11,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.686.0",
     "@aws-sdk/lib-storage": "^3.686.0",
+    "@aws-sdk/s3-request-presigner": "^3.686.0",
     "@json2csv/plainjs": "^6.0.0",
     "archiver": "^7.0.1",
     "axios": "^1.7.9",
