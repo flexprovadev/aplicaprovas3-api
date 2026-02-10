@@ -1,7 +1,7 @@
 const config = require("../../config");
 const express = require("express");
 const router = express.Router();
-const { Classroom, Exam, ExamStudent, Course } = require("../../model");
+const { Classroom, Exam, ExamStudent, Course, ActivityLog } = require("../../model");
 const multer = require("multer");
 const {
   doExamUpload,
@@ -29,6 +29,14 @@ const { applyTimezone } = require("../../util/date.util");
 const { generateArchive } = require("../../util/exam.export.util");
 const { importCsvAnswers } = require("../../util/import.csv.answers.util");
 const { addSchoolPrefix, createSchoolFilter } = require("../../util/school.util");
+const {
+  ActivityAction,
+  FileTypeKey,
+  createActivityLog,
+  isTrackedUser,
+  parsePagination,
+  extractFileNameFromUrl,
+} = require("../../util/activity.log.util");
 
 const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 const MAX_ANSWER_SHEET_IMAGE_SIZE_BYTES = 500 * 1024 * 1024; // 500MB (para imagens de folhas de respostas)
@@ -67,6 +75,76 @@ const canDownloadResults = (user) => {
   }
   return user.getPermissions().includes(Permission.DOWNLOAD_RESULTS.key);
 };
+
+const isFieldCleared = (value) =>
+  value === null || (typeof value === "string" && value.trim() === "");
+
+const resolveFileName = (req, fallbackUrl) =>
+  req?.body?.name || extractFileNameFromUrl(fallbackUrl);
+
+router.get(
+  "/activity-logs",
+  hasPermission(Permission.READ_EXAM.key),
+  async (req, res) => {
+    try {
+      if (!isTrackedUser(req.user)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const { page, limit, skip } = parsePagination(req.query);
+      const queryFilter = req.schoolPrefix
+        ? { schoolPrefix: req.schoolPrefix }
+        : {};
+
+      const [logs, total] = await Promise.all([
+        ActivityLog.find(queryFilter)
+          .select(
+            "uuid name username action fileTypeKey fileName fileUrl examUuid createdAt"
+          )
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        ActivityLog.countDocuments(queryFilter),
+      ]);
+
+      return res.json({ data: logs, total, page, limit });
+    } catch (ex) {
+      const { message = "Erro ao recuperar logs de atividade" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/activity-logs",
+  hasPermission(Permission.READ_EXAM.key),
+  async (req, res) => {
+    try {
+      if (!isTrackedUser(req.user)) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const { uuid: examUuid } = req.params;
+      const { action, fileTypeKey, fileName, fileUrl } = req.body || {};
+
+      await createActivityLog({
+        user: req.user,
+        action,
+        fileTypeKey,
+        fileName,
+        fileUrl,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
+      return res.status(204).send();
+    } catch (ex) {
+      const { message = "Erro ao registrar atividade" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
 
 router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
   try {
@@ -438,6 +516,11 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
   try {
     const { uuid } = req.params;
     const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
+    const previousExam = await Exam.findOne({ uuid })
+      .select(
+        "documentUrl namelistURL preliminarkeyURL finalkeyURL classification1URL classification2URL"
+      )
+      .lean();
 
     if (classroomUuids !== undefined && !req.schoolPrefix) {
       return res.status(400).json({ message: "Escola não identificada" });
@@ -477,6 +560,36 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
 
     if (!exam) {
       throw new Error("Não foi possível encontrar a prova");
+    }
+
+    const deleteFieldMap = [
+      { field: "documentUrl", fileTypeKey: FileTypeKey.DOCUMENT },
+      { field: "namelistURL", fileTypeKey: FileTypeKey.NAMELIST },
+      { field: "preliminarkeyURL", fileTypeKey: FileTypeKey.PRELIMINARY_KEY },
+      { field: "finalkeyURL", fileTypeKey: FileTypeKey.FINAL_KEY },
+      { field: "classification1URL", fileTypeKey: FileTypeKey.CLASSIFICATION_1 },
+      { field: "classification2URL", fileTypeKey: FileTypeKey.CLASSIFICATION_2 },
+    ];
+
+    for (const { field, fileTypeKey } of deleteFieldMap) {
+      const shouldCheckField = Object.prototype.hasOwnProperty.call(req.body, field);
+      if (!shouldCheckField) {
+        continue;
+      }
+
+      const previousValue = previousExam ? previousExam[field] : null;
+      const nextValue = req.body[field];
+      if (previousValue && isFieldCleared(nextValue)) {
+        await createActivityLog({
+          user: req.user,
+          action: ActivityAction.DELETE,
+          fileTypeKey,
+          fileName: extractFileNameFromUrl(previousValue),
+          fileUrl: previousValue,
+          examUuid: uuid,
+          schoolPrefix: req.schoolPrefix,
+        });
+      }
     }
 
     return res.json({ message: "Prova atualizada com sucesso" });
@@ -535,6 +648,16 @@ router.post(
         { $push: { answerSheetImages: location } }
       );
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.ANSWER_SHEET_IMAGES,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -566,6 +689,16 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.ANSWER_SHEET_IMAGES,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ key, uploadUrl, location, headers });
@@ -663,6 +796,16 @@ router.delete(
         { $pull: { answerSheetImages: imageUrl } }
       );
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.DELETE,
+        fileTypeKey: FileTypeKey.ANSWER_SHEET_IMAGES,
+        fileName: extractFileNameFromUrl(imageUrl),
+        fileUrl: imageUrl,
+        examUuid: uuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ message: "Imagem removida com sucesso" });
     } catch (ex) {
       const { message = "Erro ao remover imagem" } = ex;
@@ -705,6 +848,18 @@ router.post(
         { _id: exam._id },
         { $push: { printableAnswerSheetURLs: { $each: locations } } }
       );
+
+      for (const location of locations) {
+        await createActivityLog({
+          user: req.user,
+          action: ActivityAction.UPLOAD,
+          fileTypeKey: FileTypeKey.PRINTABLE_ANSWER_SHEETS,
+          fileName: extractFileNameFromUrl(location),
+          fileUrl: location,
+          examUuid,
+          schoolPrefix: req.schoolPrefix,
+        });
+      }
 
       return res.json({ locations, results });
     } catch (ex) {
@@ -763,6 +918,16 @@ router.delete(
         { $pull: { printableAnswerSheetURLs: fileUrl } }
       );
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.DELETE,
+        fileTypeKey: FileTypeKey.PRINTABLE_ANSWER_SHEETS,
+        fileName: extractFileNameFromUrl(fileUrl),
+        fileUrl,
+        examUuid: uuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ message: "Cartão-resposta removido com sucesso" });
     } catch (ex) {
       const { message = "Erro ao remover cartão-resposta" } = ex;
@@ -783,6 +948,15 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.DOCUMENT,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ uuid, key, uploadUrl, location, headers });
@@ -825,6 +999,17 @@ router.post(
       }
 
       const { uuid, location } = await doPreliminarkeyUpload(req, examUuid);
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.PRELIMINARY_KEY,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -858,6 +1043,16 @@ router.post(
         originalName: name,
       });
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.PRELIMINARY_KEY,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ key, uploadUrl, location, headers });
     } catch (ex) {
       const { message = "Erro ao gerar URL de upload" } = ex;
@@ -885,6 +1080,17 @@ router.post(
       }
 
       const { uuid, location } = await doFinalkeyUpload(req, examUuid);
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.FINAL_KEY,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -916,6 +1122,16 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.FINAL_KEY,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ key, uploadUrl, location, headers });
@@ -951,6 +1167,16 @@ router.post(
         originalName: name,
       });
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.NAMELIST,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ key, uploadUrl, location, headers });
     } catch (ex) {
       const { message = "Erro ao gerar URL de upload" } = ex;
@@ -978,6 +1204,17 @@ router.post(
       }
 
       const { uuid, location } = await doNamelistUpload(req, examUuid);
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.NAMELIST,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -1011,6 +1248,16 @@ router.post(
         { classification1URL: location }
       );
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.CLASSIFICATION_1,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -1042,6 +1289,16 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.CLASSIFICATION_1,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ key, uploadUrl, location, headers });
@@ -1115,6 +1372,16 @@ router.post(
         { classification2URL: location }
       );
 
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.CLASSIFICATION_2,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
       return res.json({ uuid, location });
     } catch (ex) {
       const { message = "Erro ao enviar arquivo" } = ex;
@@ -1146,6 +1413,16 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.CLASSIFICATION_2,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ key, uploadUrl, location, headers });
@@ -1226,6 +1503,18 @@ router.post(
         { $push: { individualResultsURLs: { $each: locations } } }
       );
 
+      for (const location of locations) {
+        await createActivityLog({
+          user: req.user,
+          action: ActivityAction.UPLOAD,
+          fileTypeKey: FileTypeKey.INDIVIDUAL_RESULTS,
+          fileName: extractFileNameFromUrl(location),
+          fileUrl: location,
+          examUuid,
+          schoolPrefix: req.schoolPrefix,
+        });
+      }
+
       return res.json({ locations, results });
     } catch (ex) {
       const { message = "Erro ao enviar arquivos" } = ex;
@@ -1257,6 +1546,16 @@ router.post(
         prefix,
         contentType: type,
         originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.INDIVIDUAL_RESULTS,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
       });
 
       return res.json({ key, uploadUrl, location, headers });
@@ -1328,7 +1627,20 @@ router.get(
         throw new Error("Não foi possível encontrar a prova");
       }
 
-      return res.json({ url: exam.classification1URL || null });
+      const fileUrl = exam.classification1URL || null;
+      if (fileUrl) {
+        await createActivityLog({
+          user: req.user,
+          action: ActivityAction.DOWNLOAD,
+          fileTypeKey: FileTypeKey.CLASSIFICATION_1,
+          fileName: extractFileNameFromUrl(fileUrl),
+          fileUrl,
+          examUuid: uuid,
+          schoolPrefix: req.schoolPrefix,
+        });
+      }
+
+      return res.json({ url: fileUrl });
     } catch (ex) {
       const { message = "Erro ao recuperar classificação" } = ex;
       return res.status(400).json({ message });
@@ -1359,7 +1671,20 @@ router.get(
         throw new Error("Não foi possível encontrar a prova");
       }
 
-      return res.json({ url: exam.classification2URL || null });
+      const fileUrl = exam.classification2URL || null;
+      if (fileUrl) {
+        await createActivityLog({
+          user: req.user,
+          action: ActivityAction.DOWNLOAD,
+          fileTypeKey: FileTypeKey.CLASSIFICATION_2,
+          fileName: extractFileNameFromUrl(fileUrl),
+          fileUrl,
+          examUuid: uuid,
+          schoolPrefix: req.schoolPrefix,
+        });
+      }
+
+      return res.json({ url: fileUrl });
     } catch (ex) {
       const { message = "Erro ao recuperar classificação" } = ex;
       return res.status(400).json({ message });
@@ -1419,6 +1744,16 @@ router.delete(
         { _id: exam._id },
         { $pull: { individualResultsURLs: fileUrl } }
       );
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.DELETE,
+        fileTypeKey: FileTypeKey.INDIVIDUAL_RESULTS,
+        fileName: extractFileNameFromUrl(fileUrl),
+        fileUrl,
+        examUuid: uuid,
+        schoolPrefix: req.schoolPrefix,
+      });
 
       return res.json({ message: "Resultado individual removido com sucesso" });
     } catch (ex) {

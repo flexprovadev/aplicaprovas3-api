@@ -5,5 +5,15 @@ const ExamStudent = require("./model/exam.student");
 const Role = require("./model/role");
 const User = require("./model/user");
 const Document = require("./model/document");
+const ActivityLog = require("./model/activity.log");
 
-module.exports = { Classroom, Course, Exam, ExamStudent, Role, User, Document };
+module.exports = {
+  Classroom,
+  Course,
+  Exam,
+  ExamStudent,
+  Role,
+  User,
+  Document,
+  ActivityLog,
+};
