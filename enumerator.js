@@ -93,6 +93,7 @@ const StorageFolder = {
   NAMELIST: "namelist",
   PRELIMINARKEY: "preliminarkey",
   FINALKEY: "finalkey",
+  EDITABLE_DOCUMENT: "editabledocument",
   ANSWER_SHEET_IMAGES: "images",
   CLASSIFICATION_1: "clas1",
   CLASSIFICATION_2: "clas2",

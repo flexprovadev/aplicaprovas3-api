@@ -6,6 +6,7 @@ const multer = require("multer");
 const {
   doExamUpload,
   doPreliminarkeyUpload,
+  doEditableDocumentUpload,
   doFinalkeyUpload,
   doNamelistUpload,
   doAnswerSheetImageUpload,
@@ -385,7 +386,7 @@ router.get(
           },
         ])
         .select(
-          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL answerSheetImages printableAnswerSheetURLs classification1URL classification2URL individualResultsURLs questions gradeStrategy gradeOptions"
+          "uuid name startAt endAt durationExam instructions documentUrl namelistURL preliminarkeyURL finalkeyURL editableDocumentURL answerSheetImages printableAnswerSheetURLs classification1URL classification2URL individualResultsURLs questions gradeStrategy gradeOptions"
         )
         .lean();
 
@@ -518,7 +519,7 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
     const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
     const previousExam = await Exam.findOne({ uuid })
       .select(
-        "documentUrl namelistURL preliminarkeyURL finalkeyURL classification1URL classification2URL"
+        "documentUrl namelistURL preliminarkeyURL finalkeyURL editableDocumentURL classification1URL classification2URL"
       )
       .lean();
 
@@ -567,6 +568,7 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
       { field: "namelistURL", fileTypeKey: FileTypeKey.NAMELIST },
       { field: "preliminarkeyURL", fileTypeKey: FileTypeKey.PRELIMINARY_KEY },
       { field: "finalkeyURL", fileTypeKey: FileTypeKey.FINAL_KEY },
+      { field: "editableDocumentURL", fileTypeKey: FileTypeKey.EDITABLE_DOCUMENT },
       { field: "classification1URL", fileTypeKey: FileTypeKey.CLASSIFICATION_1 },
       { field: "classification2URL", fileTypeKey: FileTypeKey.CLASSIFICATION_2 },
     ];
@@ -1128,6 +1130,49 @@ router.post(
         user: req.user,
         action: ActivityAction.UPLOAD,
         fileTypeKey: FileTypeKey.FINAL_KEY,
+        fileName: resolveFileName(req, location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-editabledocument/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const examFilter = {
+        uuid: examUuid,
+        ...(createSchoolFilter(req.schoolPrefix, "name") || {}),
+      };
+
+      const exam = await Exam.findOne(examFilter).select("_id");
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.EDITABLE_DOCUMENT}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.EDITABLE_DOCUMENT,
         fileName: resolveFileName(req, location),
         fileUrl: location,
         examUuid,

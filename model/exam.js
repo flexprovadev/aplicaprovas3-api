@@ -15,6 +15,7 @@ const schemaObj = {
   namelistURL: { type: String },
   preliminarkeyURL: { type: String },
   finalkeyURL: { type: String },
+  editableDocumentURL: { type: String },
   answerSheetImages: [{ type: String }],
   printableAnswerSheetURLs: [{ type: String }],
   classification1URL: { type: String },

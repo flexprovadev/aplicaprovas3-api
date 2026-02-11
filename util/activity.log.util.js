@@ -12,6 +12,7 @@ const FileTypeKey = {
   DOCUMENT: "exam.field.document",
   PRELIMINARY_KEY: "exam.field.preliminarkey",
   FINAL_KEY: "exam.field.finalkey",
+  EDITABLE_DOCUMENT: "exam.field.editableDocument",
   PRINTABLE_ANSWER_SHEETS: "exam.field.printableAnswerSheets",
   ANSWER_SHEET_IMAGES: "exam.field.answerSheetImages",
   CLASSIFICATION_1: "exam.field.classification1",

@@ -216,6 +216,13 @@ const doPreliminarkeyUpload = (req, examUuid) => {
   return uploadToS3(params);
 };
 
+const doEditableDocumentUpload = (req, examUuid) => {
+  const params = buildUploadParams(req, () => {
+    return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.EDITABLE_DOCUMENT}`;
+  });
+  return uploadToS3(params);
+};
+
 const doFinalkeyUpload = (req, examUuid) => {
   const params = buildUploadParams(req, () => {
     return `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.FINALKEY}`;
@@ -289,6 +296,7 @@ module.exports = {
   doExamUpload,
   doStudentUpload,
   doPreliminarkeyUpload,
+  doEditableDocumentUpload,
   doFinalkeyUpload,
   doNamelistUpload,
   doAnswerSheetImageUpload,
