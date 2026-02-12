@@ -109,7 +109,29 @@ router.get(
         ActivityLog.countDocuments(queryFilter),
       ]);
 
-      return res.json({ data: logs, total, page, limit });
+      const examUuids = [
+        ...new Set(logs.map(({ examUuid }) => examUuid).filter(Boolean)),
+      ];
+      const examFilter = createSchoolFilter(req.schoolPrefix, "name");
+      const examQuery = { uuid: { $in: examUuids } };
+      if (examFilter) {
+        Object.assign(examQuery, examFilter);
+      }
+
+      let examNameByUuid = new Map();
+      if (examUuids.length) {
+        const exams = await Exam.find(examQuery).select("uuid name").lean();
+        examNameByUuid = new Map(
+          exams.map(({ uuid, name }) => [uuid, name || ""])
+        );
+      }
+
+      const logsWithExamName = logs.map((entry) => ({
+        ...entry,
+        examName: examNameByUuid.get(entry.examUuid) || "",
+      }));
+
+      return res.json({ data: logsWithExamName, total, page, limit });
     } catch (ex) {
       const { message = "Erro ao recuperar logs de atividade" } = ex;
       return res.status(400).json({ message });
