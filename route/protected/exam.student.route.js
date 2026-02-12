@@ -17,6 +17,79 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_SIZE_BYTES },
 });
 
+const decodeSafe = (value = "") => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const sanitizeReferenceName = (value = "") => {
+  if (!value || typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9.-]/g, "_")
+    .replace(/_+/g, "_")
+    .toLowerCase();
+};
+
+const extractResultReferenceToken = (url = "") => {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+
+  const withoutQuery = url.split("?")[0].split("#")[0];
+  const filenameWithPrefix = decodeSafe(
+    withoutQuery.substring(withoutQuery.lastIndexOf("/") + 1)
+  );
+  const underscoreIdx = filenameWithPrefix.indexOf("_");
+  const filename =
+    underscoreIdx > 30 && underscoreIdx < 40
+      ? filenameWithPrefix.substring(underscoreIdx + 1)
+      : filenameWithPrefix;
+  const dotIndex = filename.lastIndexOf(".");
+  const baseName = dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
+  return sanitizeReferenceName(baseName);
+};
+
+const matchesResultToken = (fileToken = "", token = "") => {
+  if (!fileToken || !token) {
+    return false;
+  }
+
+  return (
+    fileToken === token ||
+    fileToken.startsWith(`${token}_`) ||
+    fileToken.startsWith(`${token}-`) ||
+    fileToken.endsWith(`_${token}`) ||
+    fileToken.endsWith(`-${token}`)
+  );
+};
+
+const findIndividualResultUrl = (urls = [], student = {}) => {
+  const tokens = [
+    sanitizeReferenceName(student.email),
+    sanitizeReferenceName(student.uuid),
+  ].filter(Boolean);
+
+  for (const token of tokens) {
+    for (let index = urls.length - 1; index >= 0; index -= 1) {
+      const resultUrl = urls[index];
+      const fileToken = extractResultReferenceToken(resultUrl);
+      if (matchesResultToken(fileToken, token)) {
+        return resultUrl;
+      }
+    }
+  }
+
+  return null;
+};
+
 router.get("/:uuid", isStudent, async (req, res) => {
   try {
     const { user: student } = req;
@@ -87,7 +160,16 @@ router.get("/:uuid/receipt", isStudent, async (req, res) => {
     }
 
     const { answers, exam, grade, createdAt, submittedAt } = examStudent;
-    const { questions: examQuestions, documentUrl, name } = exam;
+    const {
+      questions: examQuestions,
+      documentUrl,
+      name,
+      individualResultsURLs = [],
+    } = exam;
+    const individualResultUrl = findIndividualResultUrl(
+      individualResultsURLs,
+      student
+    );
 
     const questions = examQuestions
       .filter(({ uuid }) => answers[uuid])
@@ -111,6 +193,7 @@ router.get("/:uuid/receipt", isStudent, async (req, res) => {
       documentUrl,
       name,
       grade,
+      individualResultUrl,
       createdAt: applyTimezone(createdAt),
       submittedAt: applyTimezone(submittedAt),
     });
