@@ -47,6 +47,27 @@ const decodeSafe = (value = "") => {
   }
 };
 
+const removeUuidPrefixFromFileName = (fileName = "") => {
+  if (!fileName || typeof fileName !== "string") {
+    return "";
+  }
+
+  const trimmed = decodeSafe(fileName.trim());
+  if (!trimmed) {
+    return "";
+  }
+
+  const uuidPrefixRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[_-](.+)$/i;
+  const matched = trimmed.match(uuidPrefixRegex);
+
+  if (matched && matched[1]) {
+    return matched[1];
+  }
+
+  return trimmed;
+};
+
 const extractFileNameFromUrl = (url = "") => {
   if (!url || typeof url !== "string") {
     return "";
@@ -87,6 +108,7 @@ const createActivityLog = async ({
     const resolvedFileName =
       (typeof fileName === "string" ? fileName.trim() : "") ||
       extractFileNameFromUrl(fileUrl);
+    const normalizedFileName = removeUuidPrefixFromFileName(resolvedFileName);
 
     return await ActivityLog.create({
       userId: user._id,
@@ -96,7 +118,7 @@ const createActivityLog = async ({
       role: user.type,
       action,
       fileTypeKey,
-      fileName: resolvedFileName,
+      fileName: normalizedFileName,
       fileUrl: fileUrl || "",
       examUuid: examUuid || "",
       schoolPrefix: schoolPrefix || "",
