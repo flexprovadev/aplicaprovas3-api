@@ -3,4 +3,6 @@ generate_project_tree_api.sh
 project_tree_2_api.txt
 .env
 .env.test
+.env-local
+.env-backup
 cookies.txt
