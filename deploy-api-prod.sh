@@ -20,7 +20,7 @@ SSH_KEY="$HOME/.ssh/id_ed25519"
 REMOTE_DIR="/home/ec2-user/aplicaprovas3-api"
 CONTAINER_NAME="aplicaprovas3"
 PORT_MAPPING="4000:4000"
-ENV_FILE="/home/ec2-user/.env-prod"
+ENV_FILE="/home/ec2-user/.env"
 
 # ========================================
 # FUNÇÕES AUXILIARES
@@ -52,7 +52,7 @@ confirm_production() {
     echo "  • Sincronizar arquivos do projeto para EC2 ($EC2_HOST)"
     echo "  • Remover container/imagens antigos"
     echo "  • Buildar imagem Docker DENTRO da EC2"
-    echo "  • Iniciar novo container com .env-prod"
+    echo "  • Iniciar novo container com .env"
     echo "  • Limpar espaço em disco (pós-deploy)"
     echo ""
     echo -e "${RED}⚠️  AMBIENTE DE PRODUÇÃO${NC}"
@@ -180,6 +180,31 @@ echo "=== Iniciando deploy na EC2 ==="
 echo "Diretório de trabalho: $REMOTE_DIR"
 cd $REMOTE_DIR
 
+echo "=== Validando arquivo de ambiente ($ENV_FILE) ==="
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ Arquivo $ENV_FILE não encontrado na EC2."
+    echo "Crie o arquivo no servidor antes de rodar o deploy."
+    exit 1
+fi
+
+if file "$ENV_FILE" | grep -q "CRLF"; then
+    echo "⚠️ O arquivo $ENV_FILE está com final de linha Windows (CRLF)."
+    echo "Converta para LF para evitar leitura incorreta de variáveis."
+fi
+
+if grep -Eq '^[[:space:]]*DATABASE_URL[[:space:]]*=' "$ENV_FILE"; then
+    if grep -Eq '^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*"' "$ENV_FILE" || \
+       grep -Eq "^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*'" "$ENV_FILE"; then
+        echo "❌ DATABASE_URL no $ENV_FILE está entre aspas."
+        echo "No docker --env-file as aspas viram parte do valor e quebram a conexão MongoDB."
+        echo "Use sem aspas: DATABASE_URL=mongodb+srv://..."
+        exit 1
+    fi
+    echo "✅ DATABASE_URL encontrado no $ENV_FILE."
+else
+    echo "ℹ️ DATABASE_URL não encontrado. A API tentará montar a URL com DATABASE_HOST/USER/PASS/NAME."
+fi
+
 echo "Parando container atual..."
 docker stop $CONTAINER_NAME 2>/dev/null || echo "Container não existia ou já estava parado"
 
@@ -192,7 +217,7 @@ docker rmi aplicaprovas3:latest 2>/dev/null || echo "Imagem não existia"
 echo "=== Buildando nova imagem Docker (sem cache) ==="
 docker build --no-cache -t aplicaprovas3:latest .
 
-echo "=== Iniciando novo container com .env-prod ==="
+echo "=== Iniciando novo container com .env ==="
 docker run -d \\
   --restart unless-stopped \\
   -p $PORT_MAPPING \\
