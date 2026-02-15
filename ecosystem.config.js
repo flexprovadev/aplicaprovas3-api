@@ -1,9 +1,12 @@
+const isRenderStaging =
+  String(process.env.RENDER_STAGING || "").toLowerCase() === "true";
+
 module.exports = {
   apps: [
     {
       script: "index.js",
-      watch: ".",
-      instances: "max",
+      watch: isRenderStaging ? false : ".",
+      instances: isRenderStaging ? 1 : "max",
       env: {
         NODE_ENV: "development",
       },
