@@ -8,13 +8,23 @@ const passport = require("passport");
 const mongoose = require("mongoose");
 const config = require("./config");
 
+const normalizeOrigin = (value) => {
+  if (!value) {
+    return "";
+  }
+  return String(value)
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "")
+    .replace(/\/+$/, "");
+};
+
 const parseOrigins = (value) => {
   if (!value) {
     return [];
   }
   return value
     .split(",")
-    .map((entry) => entry.trim())
+    .map((entry) => normalizeOrigin(entry))
     .filter(Boolean);
 };
 
@@ -28,7 +38,8 @@ const corsOptions = {
       // Allow requests with no origin (mobile apps, curl, same-origin)
       return callback(null, true);
     }
-    if (allowedOrigins.includes(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, true);
     }
     return callback(new Error("Not allowed by CORS"));
