@@ -192,6 +192,15 @@ if file "$ENV_FILE" | grep -q "CRLF"; then
     echo "Converta para LF para evitar leitura incorreta de variáveis."
 fi
 
+if grep -nE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=.*[[:space:]]+$' "$ENV_FILE" > /tmp/aplicaprovas3-env-trailing-space.txt; then
+    echo "❌ Foram encontrados valores com espaço no final no arquivo $ENV_FILE:"
+    sed -E 's/^([0-9]+:)[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]]*=).*/\\1\\2<valor com espaço no final>/' /tmp/aplicaprovas3-env-trailing-space.txt
+    rm -f /tmp/aplicaprovas3-env-trailing-space.txt
+    echo "Remova os espaços no fim dos valores (exemplo: AWS_REGION=us-east-1)."
+    exit 1
+fi
+rm -f /tmp/aplicaprovas3-env-trailing-space.txt 2>/dev/null || true
+
 if grep -Eq '^[[:space:]]*DATABASE_URL[[:space:]]*=' "$ENV_FILE"; then
     if grep -Eq '^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*"' "$ENV_FILE" || \
        grep -Eq "^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*'" "$ENV_FILE"; then

@@ -12,7 +12,7 @@ import {
 
 const BASE_URL = normalizeBaseUrl(__ENV.BASE_URL || "http://localhost:4000");
 const EXAM_UUID = (__ENV.EXAM_UUID || "").trim();
-const STUDENTS_FILE = __ENV.STUDENTS_CSV || "../data/students.csv";
+const STUDENTS_FILE = resolveStudentsFile(__ENV.STUDENTS_CSV);
 const SLEEP_SECONDS = Number(__ENV.BREAKPOINT_SLEEP_SECONDS || 0.2);
 
 if (!EXAM_UUID) {
@@ -95,4 +95,25 @@ function buildStepStages(rawTargets, stepDuration, cooldownDuration) {
 
   stages.push({ duration: cooldownDuration, target: 0 });
   return stages;
+}
+
+function resolveStudentsFile(rawPath) {
+  if (!rawPath) {
+    return "../data/students.csv";
+  }
+
+  const normalized = String(rawPath).trim();
+  if (normalized.startsWith("/")) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("./data/")) {
+    return `../data/${normalized.slice("./data/".length)}`;
+  }
+
+  if (normalized.startsWith("data/")) {
+    return `../${normalized}`;
+  }
+
+  return normalized;
 }

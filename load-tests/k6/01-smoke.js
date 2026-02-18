@@ -15,7 +15,7 @@ import {
 const BASE_URL = normalizeBaseUrl(__ENV.BASE_URL || "http://localhost:4000");
 const EXAM_UUID = (__ENV.EXAM_UUID || "").trim();
 const SHOULD_SUBMIT = String(__ENV.DO_SUBMIT || "false").toLowerCase() === "true";
-const STUDENTS_FILE = __ENV.STUDENTS_CSV || "../data/students.csv";
+const STUDENTS_FILE = resolveStudentsFile(__ENV.STUDENTS_CSV);
 
 if (!EXAM_UUID) {
   fail("EXAM_UUID e obrigatorio no smoke test.");
@@ -78,4 +78,25 @@ export default function () {
   }
 
   sleep(1);
+}
+
+function resolveStudentsFile(rawPath) {
+  if (!rawPath) {
+    return "../data/students.csv";
+  }
+
+  const normalized = String(rawPath).trim();
+  if (normalized.startsWith("/")) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("./data/")) {
+    return `../data/${normalized.slice("./data/".length)}`;
+  }
+
+  if (normalized.startsWith("data/")) {
+    return `../${normalized}`;
+  }
+
+  return normalized;
 }

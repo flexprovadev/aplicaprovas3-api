@@ -16,6 +16,10 @@ const isTruthy = (value) => {
   return ["1", "true", "yes", "y", "on"].includes(normalized);
 };
 
+const isProduction = () => {
+  return String(process.env.NODE_ENV || "").trim().toLowerCase() === "production";
+};
+
 const parseDurationToMs = (value) => {
   if (!value) {
     return null;
@@ -97,10 +101,11 @@ const normalizeSameSite = (value) => {
  */
 const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
   const sameSite = normalizeSameSite(process.env.JWT_COOKIE_SAMESITE);
+  const production = isProduction();
   const secure =
     isTruthy(process.env.JWT_COOKIE_SECURE) ||
     (process.env.JWT_COOKIE_SECURE === undefined &&
-      process.env.NODE_ENV === "production");
+      production);
 
   // Validação: SameSite=None requer Secure=true
   if (sameSite === "none" && !secure) {
@@ -112,7 +117,7 @@ const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
   }
 
   // Validação: SameSite=None em desenvolvimento pode causar problemas
-  if (sameSite === "none" && process.env.NODE_ENV !== "production") {
+  if (sameSite === "none" && !production) {
     console.warn(
       "⚠️  AVISO: SameSite=None em desenvolvimento pode causar problemas. " +
       "Considere usar SameSite=Lax para desenvolvimento local."
@@ -126,7 +131,7 @@ const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
     path: "/",
   };
 
-  const domain = process.env.JWT_COOKIE_DOMAIN;
+  const domain = String(process.env.JWT_COOKIE_DOMAIN || "").trim();
   if (domain) {
     options.domain = domain;
   }
@@ -139,7 +144,7 @@ const buildAuthCookieOptions = ({ includeMaxAge } = {}) => {
   }
 
   // Log de diagnóstico em desenvolvimento
-  if (process.env.NODE_ENV !== "production") {
+  if (!production) {
     debugAuth("Cookie options configured", {
       sameSite,
       secure,

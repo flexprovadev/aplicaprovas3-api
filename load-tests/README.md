@@ -53,6 +53,54 @@ Crie seu CSV:
 cp ./data/students.example.csv ./data/students.csv
 ```
 
+### 4.1 Gerar CSV automaticamente pela API (recomendado)
+
+Script:
+
+- `scripts/generate-students-csv.js`
+
+Esse script:
+
+- autentica com conta admin/superuser,
+- encontra alunos elegiveis para uma prova,
+- escolhe `question_uuid` valido (ou usa override),
+- opcionalmente chama `/take` para preencher `exam_student_uuid`,
+- gera arquivo `students-YYYY-MM-DD.csv` em `load-tests/data`.
+
+Modo leitura (nao altera senha de aluno):
+
+```bash
+node ./scripts/generate-students-csv.js \
+  --base-url "http://localhost:4000" \
+  --admin-email "silvagirao@gmail.com" \
+  --admin-password "abcd1234" \
+  --exam-uuid "1192c2e1-c849-4a9d-a91b-b28eed94dff6" \
+  --default-student-password "abc123" \
+  --prepare-exam-students true \
+  --limit 100
+```
+
+Modo garantido (redefine senha dos alunos selecionados):
+
+```bash
+node ./scripts/generate-students-csv.js \
+  --base-url "http://localhost:4000" \
+  --admin-email "silvagirao@gmail.com" \
+  --admin-password "abcd1234" \
+  --exam-uuid "1192c2e1-c849-4a9d-a91b-b28eed94dff6" \
+  --set-student-password "Carga2026!" \
+  --prepare-exam-students true \
+  --limit 100
+```
+
+Observacoes importantes:
+
+- Use `--prepare-exam-students true` para preencher `exam_student_uuid` no CSV.
+- Se a prova estiver fora da janela (antes/depois) ou aluno sem permissao de iniciar, o script mostra `WARN` e segue com `exam_student_uuid` vazio para aquele aluno.
+- Se um aluno ja tiver prova `submitted`, ele e excluido automaticamente do CSV.
+- Se nao passar `--exam-uuid`, o script tenta auto-selecionar a primeira prova elegivel.
+- Com `--set-student-password`, o script altera dados reais no ambiente apontado.
+
 Formato:
 
 ```csv

@@ -1,4 +1,6 @@
 node_modules/
+load-tests/data/
+load-tests/reports/
 generate_project_tree_api.sh
 project_tree_2_api.txt
 .env
