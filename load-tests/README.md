@@ -16,6 +16,7 @@ Responder com dados reais:
 - `k6/02-answer-ramp.js`: carga sustentada no endpoint de salvar resposta.
 - `k6/03-breakpoint-step.js`: teste em degraus para achar o primeiro gargalo.
 - `k6/04-pdf-download.js`: carga de download do PDF (S3/CloudFront).
+- `k6/05-answer-realistic.js`: cenario "prova real" com pausas humanas e revisao.
 - `k6/lib/*.js`: utilitarios comuns.
 - `data/students.example.csv`: modelo de usuarios.
 
@@ -195,7 +196,99 @@ k6 run \
   ./k6/04-pdf-download.js
 ```
 
-## 7. Como ler o primeiro gargalo
+### 6.5 Cenario prova real (ondas + comportamento humano)
+
+Esse cenario foi criado para estimar experiencia de aluno simultaneo sem flood continuo:
+
+- login + resolucao de contexto 1 vez por VU;
+- 1 marcacao de resposta por iteracao;
+- pausa humana aleatoria entre `THINK_MIN_SECONDS` e `THINK_MAX_SECONDS`;
+- chance de revisao/troca de resposta em `REVIEW_PROBABILITY`.
+
+Comando local (inclui exportacao NDJSON):
+
+```bash
+k6 run \
+  --summary-export ./reports/05-answer-realistic.json \
+  --out json=./reports/05-answer-realistic.ndjson \
+  -e BASE_URL="http://localhost:4000" \
+  -e EXAM_UUID="SEU_EXAM_UUID" \
+  -e STUDENTS_CSV="$(pwd)/data/students.csv" \
+  -e REALISTIC_STAGES="2m:100,2m:200,2m:300,2m:400,2m:500,2m:600,2m:700,2m:800,2m:900,2m:1000,4m:0" \
+  -e THINK_MIN_SECONDS="4" \
+  -e THINK_MAX_SECONDS="20" \
+  -e REVIEW_PROBABILITY="0.15" \
+  -e ANSWER_ERROR_RATE_MAX="0.01" \
+  -e ANSWER_P95_GOAL_MS="1000" \
+  ./k6/05-answer-realistic.js
+```
+
+Comando producao (rodar somente em janela controlada):
+
+```bash
+k6 run \
+  --summary-export ./reports/05-answer-realistic-prod.json \
+  --out json=./reports/05-answer-realistic-prod.ndjson \
+  -e BASE_URL="https://api.seu-dominio.com" \
+  -e EXAM_UUID="SEU_EXAM_UUID" \
+  -e STUDENTS_CSV="$(pwd)/data/students.csv" \
+  -e REALISTIC_STAGES="2m:100,2m:200,2m:300,2m:400,2m:500,2m:600,2m:700,2m:800,2m:900,2m:1000,4m:0" \
+  -e THINK_MIN_SECONDS="4" \
+  -e THINK_MAX_SECONDS="20" \
+  -e REVIEW_PROBABILITY="0.15" \
+  -e ANSWER_ERROR_RATE_MAX="0.01" \
+  -e ANSWER_P95_GOAL_MS="1000" \
+  ./k6/05-answer-realistic.js
+```
+
+Metricas principais do script `05`:
+
+- `answer_put_success`: taxa de sucesso do `PUT /answer` (status `204`);
+- `endpoint_401_rate`, `endpoint_4xx_rate`, `endpoint_5xx_rate` por endpoint;
+- `answer_put_duration`: latencia do endpoint `answer_put` (`p(50)`, `p(90)`, `p(95)`).
+
+## 7. Criterio go/no-go e resposta "ate X alunos"
+
+Criterio inicial recomendado para o alvo de alunos simultaneos:
+
+- erro em `PUT /answer` < `1%` (`answer_put_success >= 0.99`);
+- `p95(answer_put)` < `1s` (`answer_put_duration p(95) < 1000ms`);
+- `5xx` em `answer_put` idealmente proximo de zero (maximo `1%`).
+
+Como concluir "ate X alunos simultaneos com experiencia aceitavel":
+
+1. Rode o teste `05` com o pico alvo (exemplo: `1000` no ultimo patamar).
+2. Se passar nos criterios, aumente o pico e rode novamente.
+3. Se falhar, reduza o pico e rode novamente.
+4. O maior pico que passa e o seu `X` de capacidade com experiencia aceitavel.
+
+Leitura rapida do resumo JSON:
+
+```bash
+jq '{
+  answer_put_success: .metrics.answer_put_success.values.rate,
+  answer_put_p50_ms: .metrics.answer_put_duration.values["p(50)"],
+  answer_put_p90_ms: .metrics.answer_put_duration.values["p(90)"],
+  answer_put_p95_ms: .metrics.answer_put_duration.values["p(95)"]
+}' ./reports/05-answer-realistic.json
+```
+
+Decisao automatica (GO/NO-GO) para os criterios iniciais:
+
+```bash
+jq -r '
+  .metrics.answer_put_success.values.rate as $success
+  | .metrics.answer_put_duration.values["p(95)"] as $p95
+  | if ($success >= 0.99 and $p95 < 1000)
+      then "GO: experiencia aceitavel no pico testado"
+      else "NO-GO: experiencia ruim no pico testado"
+    end
+  + " | success=" + ($success|tostring)
+  + " | p95_ms=" + ($p95|tostring)
+' ./reports/05-answer-realistic.json
+```
+
+## 8. Como ler o primeiro gargalo
 
 Sinais tipicos (nessa ordem):
 
@@ -213,7 +306,7 @@ Em `t2.micro`, um sintoma comum e:
 - Inicialmente parece bom.
 - Depois de alguns minutos de carga continua, `CPUCreditBalance` cai e a latencia piora de forma brusca.
 
-## 8. O que monitorar durante o teste
+## 9. O que monitorar durante o teste
 
 EC2:
 
@@ -234,7 +327,31 @@ Mongo Atlas:
 - uso de CPU e limites do tier
 - operacoes por segundo
 
-## 9. Regras de seguranca
+## 10. Exportar NDJSON e resumir status HTTP com jq
+
+Comando de exportacao NDJSON (se quiser rodar separado):
+
+```bash
+k6 run \
+  --out json=./reports/05-answer-realistic.ndjson \
+  -e BASE_URL="http://localhost:4000" \
+  -e EXAM_UUID="SEU_EXAM_UUID" \
+  -e STUDENTS_CSV="$(pwd)/data/students.csv" \
+  ./k6/05-answer-realistic.js
+```
+
+Resumo de status HTTP por endpoint:
+
+```bash
+jq -r 'select(.type=="Point" and .metric=="http_reqs")
+  | [(.data.tags.endpoint // "sem_endpoint"), (.data.tags.status // "sem_status")]
+  | @tsv' ./reports/05-answer-realistic.ndjson \
+| sort \
+| uniq -c \
+| sort -nr
+```
+
+## 11. Regras de seguranca
 
 - Evite rodar em producao no horario de prova.
 - Se precisar rodar em producao, use janela controlada e carga gradual.
