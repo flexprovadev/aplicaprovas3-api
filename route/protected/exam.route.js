@@ -72,11 +72,142 @@ const questionMapper = (question) => ({
 const normalizeQuestions = (questions = []) =>
   questions.filter(questionFilter).map(questionMapper);
 
+const LEGACY_PUT_FILE_FIELDS_ENABLED =
+  process.env.EXAM_ALLOW_LEGACY_FILE_FIELDS_IN_PUT !== "false";
+
+const PUT_METADATA_FIELDS = new Set([
+  "name",
+  "startAt",
+  "endAt",
+  "durationExam",
+  "instructions",
+  "gradeStrategy",
+  "gradeOptions",
+  "questions",
+  "classrooms",
+]);
+
+const PUT_GENERAL_FILE_FIELDS = new Set([
+  "documentUrl",
+  "namelistURL",
+  "preliminarkeyURL",
+  "finalkeyURL",
+  "editableDocumentURL",
+  "answerSheetImages",
+  "printableAnswerSheetURLs",
+]);
+
+const PUT_RESULT_FILE_FIELDS = new Set([
+  "classification1URL",
+  "classification2URL",
+  "individualResultsURLs",
+]);
+
 const canDownloadResults = (user) => {
   if (!user) {
     return false;
   }
   return user.getPermissions().includes(Permission.DOWNLOAD_RESULTS.key);
+};
+
+const canEditExam = (user) => {
+  if (!user) {
+    return false;
+  }
+  return (
+    user.type === UserType.SUPERUSER ||
+    user.getPermissions().includes(Permission.UPDATE_EXAM.key)
+  );
+};
+
+const canManageResults = (user) => canEditExam(user) && canDownloadResults(user);
+
+const hasAnyPathSegmentAfterPrefix = (key, prefix) => {
+  const marker = `${prefix}/`;
+  const markerIndex = key.indexOf(marker);
+  if (markerIndex === -1) {
+    return "";
+  }
+  return key.substring(markerIndex + marker.length);
+};
+
+const isValidKeyForPrefix = ({ key, prefix, allowNested = false }) => {
+  if (!key || typeof key !== "string") {
+    return false;
+  }
+
+  const suffix = hasAnyPathSegmentAfterPrefix(key, prefix);
+  if (!suffix) {
+    return false;
+  }
+
+  if (!allowNested && suffix.includes("/")) {
+    return false;
+  }
+
+  return true;
+};
+
+const getExamFilter = (examUuid, schoolPrefix) => ({
+  uuid: examUuid,
+  ...(createSchoolFilter(schoolPrefix, "name") || {}),
+});
+
+const assertCanManageResults = (req, res) => {
+  if (canManageResults(req.user)) {
+    return true;
+  }
+  res.status(403).json({ message: "Not authorized" });
+  return false;
+};
+
+const filterExamPutBody = (payload = {}, { user }) => {
+  const allowedFields = new Set(PUT_METADATA_FIELDS);
+
+  if (LEGACY_PUT_FILE_FIELDS_ENABLED) {
+    PUT_GENERAL_FILE_FIELDS.forEach((field) => allowedFields.add(field));
+    if (canManageResults(user)) {
+      PUT_RESULT_FILE_FIELDS.forEach((field) => allowedFields.add(field));
+    }
+  }
+
+  return Object.entries(payload).reduce((acc, [field, value]) => {
+    if (allowedFields.has(field)) {
+      acc[field] = value;
+    }
+    return acc;
+  }, {});
+};
+
+const clearSingleFileField = async ({
+  examUuid,
+  schoolPrefix,
+  field,
+  fileTypeKey,
+  user,
+}) => {
+  const exam = await Exam.findOne(getExamFilter(examUuid, schoolPrefix))
+    .select(`_id ${field}`)
+    .lean();
+
+  if (!exam) {
+    throw new Error("Não foi possível encontrar a prova");
+  }
+
+  const previousValue = exam[field] || null;
+  if (previousValue) {
+    await createActivityLog({
+      user,
+      action: ActivityAction.DELETE,
+      fileTypeKey,
+      fileName: extractFileNameFromUrl(previousValue),
+      fileUrl: previousValue,
+      examUuid,
+      schoolPrefix,
+    });
+  }
+
+  await Exam.updateOne({ _id: exam._id }, { [field]: null });
 };
 
 const isFieldCleared = (value) =>
@@ -577,7 +708,19 @@ router.post("", hasPermission(Permission.CREATE_EXAM.key), async (req, res) => {
 router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res) => {
   try {
     const { uuid } = req.params;
-    const { questions, classrooms: classroomUuids, gradeStrategy } = req.body;
+    const sanitizedBody = filterExamPutBody(req.body, { user: req.user });
+    const discardedFields = Object.keys(req.body || {}).filter(
+      (field) => !Object.prototype.hasOwnProperty.call(sanitizedBody, field)
+    );
+    if (discardedFields.length) {
+      console.warn(
+        `[exam.put] Ignored unauthorized/unsupported fields for exam ${uuid}: ${discardedFields.join(
+          ", "
+        )}`
+      );
+    }
+
+    const { questions, classrooms: classroomUuids, gradeStrategy } = sanitizedBody;
     const previousExam = await Exam.findOne({ uuid })
       .select(
         "documentUrl namelistURL preliminarkeyURL finalkeyURL editableDocumentURL classification1URL classification2URL"
@@ -588,34 +731,39 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
       return res.status(400).json({ message: "Escola não identificada" });
     }
 
-    if (req.body.name !== undefined && !req.schoolPrefix) {
+    if (sanitizedBody.name !== undefined && !req.schoolPrefix) {
       return res.status(400).json({ message: "Escola não identificada" });
     }
 
-    const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
+    let classrooms;
+    if (classroomUuids !== undefined) {
+      const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
 
-    const classrooms = await Classroom.find({
-      uuid: classroomUuids,
-      ...classroomFilter,
-    }).select("uuid");
+      classrooms = await Classroom.find({
+        uuid: classroomUuids,
+        ...classroomFilter,
+      }).select("uuid");
 
-    if (
-      Array.isArray(classroomUuids) &&
-      classroomUuids.length !== classrooms.length
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Turma pertence a outra escola" });
+      if (
+        Array.isArray(classroomUuids) &&
+        classroomUuids.length !== classrooms.length
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Turma pertence a outra escola" });
+      }
     }
 
     const updateQuery = {
-      ...req.body,
-      ...(req.body.name !== undefined
-        ? { name: addSchoolPrefix(req.body.name, req.schoolPrefix) }
+      ...sanitizedBody,
+      ...(sanitizedBody.name !== undefined
+        ? { name: addSchoolPrefix(sanitizedBody.name, req.schoolPrefix) }
         : {}),
-      gradeStrategy,
-      questions: normalizeQuestions(questions),
-      classrooms,
+      ...(gradeStrategy !== undefined ? { gradeStrategy } : {}),
+      ...(questions !== undefined
+        ? { questions: normalizeQuestions(questions) }
+        : {}),
+      ...(classroomUuids !== undefined ? { classrooms } : {}),
     };
 
     const exam = await Exam.findOneAndUpdate({ uuid }, updateQuery);
@@ -635,13 +783,16 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
     ];
 
     for (const { field, fileTypeKey } of deleteFieldMap) {
-      const shouldCheckField = Object.prototype.hasOwnProperty.call(req.body, field);
+      const shouldCheckField = Object.prototype.hasOwnProperty.call(
+        sanitizedBody,
+        field
+      );
       if (!shouldCheckField) {
         continue;
       }
 
       const previousValue = previousExam ? previousExam[field] : null;
-      const nextValue = req.body[field];
+      const nextValue = sanitizedBody[field];
       if (previousValue && isFieldCleared(nextValue)) {
         await createActivityLog({
           user: req.user,
@@ -661,6 +812,161 @@ router.put("/:uuid", hasPermission(Permission.UPDATE_EXAM.key), async (req, res)
     return res.status(400).json({ message });
   }
 });
+
+router.delete(
+  "/:uuid/document",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "documentUrl",
+        fileTypeKey: FileTypeKey.DOCUMENT,
+        user: req.user,
+      });
+      return res.json({ message: "Documento removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover documento" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/namelist",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "namelistURL",
+        fileTypeKey: FileTypeKey.NAMELIST,
+        user: req.user,
+      });
+      return res.json({ message: "Lista de inscritos removida com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover lista de inscritos" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/preliminarkey",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "preliminarkeyURL",
+        fileTypeKey: FileTypeKey.PRELIMINARY_KEY,
+        user: req.user,
+      });
+      return res.json({ message: "Gabarito preliminar removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover gabarito preliminar" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/finalkey",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "finalkeyURL",
+        fileTypeKey: FileTypeKey.FINAL_KEY,
+        user: req.user,
+      });
+      return res.json({ message: "Gabarito final removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover gabarito final" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/editabledocument",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "editableDocumentURL",
+        fileTypeKey: FileTypeKey.EDITABLE_DOCUMENT,
+        user: req.user,
+      });
+      return res.json({ message: "Documento editável removido com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover documento editável" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/classification-1",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "classification1URL",
+        fileTypeKey: FileTypeKey.CLASSIFICATION_1,
+        user: req.user,
+      });
+      return res.json({ message: "Classificação 1 removida com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover classificação 1" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.delete(
+  "/:uuid/classification-2",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
+      const { uuid: examUuid } = req.params;
+      await clearSingleFileField({
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+        field: "classification2URL",
+        fileTypeKey: FileTypeKey.CLASSIFICATION_2,
+        user: req.user,
+      });
+      return res.json({ message: "Classificação 2 removida com sucesso" });
+    } catch (ex) {
+      const { message = "Erro ao remover classificação 2" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
 
 
 //// FIM DA ALTERAÇÃO
@@ -1031,6 +1337,78 @@ router.post(
 );
 
 router.post(
+  "/:uuid/upload-document/presign",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { name, type } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const prefix = `${StorageFolder.EXAMS}/${examUuid}`;
+      const { key, uploadUrl, location, headers } = await createPresignedUpload({
+        prefix,
+        contentType: type,
+        originalName: name,
+      });
+
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-document/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}`;
+      if (!isValidKeyForPrefix({ key, prefix: expectedPrefix, allowNested: false })) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne({ _id: exam._id }, { documentUrl: location });
+
+      await createActivityLog({
+        user: req.user,
+        action: ActivityAction.UPLOAD,
+        fileTypeKey: FileTypeKey.DOCUMENT,
+        fileName: extractFileNameFromUrl(location),
+        fileUrl: location,
+        examUuid,
+        schoolPrefix: req.schoolPrefix,
+      });
+
+      return res.json({ location });
+    } catch (ex) {
+      const { message = "Erro ao confirmar upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
   "/upload",
   upload.single("file"),
   hasPermission(Permission.UPDATE_EXAM.key),
@@ -1062,6 +1440,11 @@ router.post(
       }
 
       const { uuid, location } = await doPreliminarkeyUpload(req, examUuid);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { preliminarkeyURL: location }
+      );
 
       await createActivityLog({
         user: req.user,
@@ -1106,19 +1489,51 @@ router.post(
         originalName: name,
       });
 
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-preliminarkey/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.PRELIMINARKEY}`;
+      if (!isValidKeyForPrefix({ key, prefix: expectedPrefix })) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne({ _id: exam._id }, { preliminarkeyURL: location });
+
       await createActivityLog({
         user: req.user,
         action: ActivityAction.UPLOAD,
         fileTypeKey: FileTypeKey.PRELIMINARY_KEY,
-        fileName: resolveFileName(req, location),
+        fileName: extractFileNameFromUrl(location),
         fileUrl: location,
         examUuid,
         schoolPrefix: req.schoolPrefix,
       });
 
-      return res.json({ key, uploadUrl, location, headers });
+      return res.json({ location });
     } catch (ex) {
-      const { message = "Erro ao gerar URL de upload" } = ex;
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -1143,6 +1558,11 @@ router.post(
       }
 
       const { uuid, location } = await doFinalkeyUpload(req, examUuid);
+
+      await Exam.updateOne(
+        { _id: exam._id },
+        { finalkeyURL: location }
+      );
 
       await createActivityLog({
         user: req.user,
@@ -1187,19 +1607,51 @@ router.post(
         originalName: name,
       });
 
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-finalkey/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.FINALKEY}`;
+      if (!isValidKeyForPrefix({ key, prefix: expectedPrefix })) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne({ _id: exam._id }, { finalkeyURL: location });
+
       await createActivityLog({
         user: req.user,
         action: ActivityAction.UPLOAD,
         fileTypeKey: FileTypeKey.FINAL_KEY,
-        fileName: resolveFileName(req, location),
+        fileName: extractFileNameFromUrl(location),
         fileUrl: location,
         examUuid,
         schoolPrefix: req.schoolPrefix,
       });
 
-      return res.json({ key, uploadUrl, location, headers });
+      return res.json({ location });
     } catch (ex) {
-      const { message = "Erro ao gerar URL de upload" } = ex;
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -1230,19 +1682,51 @@ router.post(
         originalName: name,
       });
 
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-editabledocument/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.EDITABLE_DOCUMENT}`;
+      if (!isValidKeyForPrefix({ key, prefix: expectedPrefix })) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne({ _id: exam._id }, { editableDocumentURL: location });
+
       await createActivityLog({
         user: req.user,
         action: ActivityAction.UPLOAD,
         fileTypeKey: FileTypeKey.EDITABLE_DOCUMENT,
-        fileName: resolveFileName(req, location),
+        fileName: extractFileNameFromUrl(location),
         fileUrl: location,
         examUuid,
         schoolPrefix: req.schoolPrefix,
       });
 
-      return res.json({ key, uploadUrl, location, headers });
+      return res.json({ location });
     } catch (ex) {
-      const { message = "Erro ao gerar URL de upload" } = ex;
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -1273,19 +1757,51 @@ router.post(
         originalName: name,
       });
 
+      return res.json({ key, uploadUrl, location, headers });
+    } catch (ex) {
+      const { message = "Erro ao gerar URL de upload" } = ex;
+      return res.status(400).json({ message });
+    }
+  }
+);
+
+router.post(
+  "/:uuid/upload-namelist/confirm",
+  hasPermission(Permission.UPDATE_EXAM.key),
+  async (req, res) => {
+    try {
+      const { uuid: examUuid } = req.params;
+      const { key } = req.body;
+      const exam = await Exam.findOne(getExamFilter(examUuid, req.schoolPrefix)).select(
+        "_id"
+      );
+
+      if (!exam) {
+        throw new Error("Não foi possível encontrar a prova");
+      }
+
+      const expectedPrefix = `${StorageFolder.EXAMS}/${examUuid}/${StorageFolder.NAMELIST}`;
+      if (!isValidKeyForPrefix({ key, prefix: expectedPrefix })) {
+        throw new Error("Key inválida para esta prova");
+      }
+
+      const location = buildPublicUrl(key);
+
+      await Exam.updateOne({ _id: exam._id }, { namelistURL: location });
+
       await createActivityLog({
         user: req.user,
         action: ActivityAction.UPLOAD,
         fileTypeKey: FileTypeKey.NAMELIST,
-        fileName: resolveFileName(req, location),
+        fileName: extractFileNameFromUrl(location),
         fileUrl: location,
         examUuid,
         schoolPrefix: req.schoolPrefix,
       });
 
-      return res.json({ key, uploadUrl, location, headers });
+      return res.json({ location });
     } catch (ex) {
-      const { message = "Erro ao gerar URL de upload" } = ex;
+      const { message = "Erro ao confirmar upload" } = ex;
       return res.status(400).json({ message });
     }
   }
@@ -1311,6 +1827,11 @@ router.post(
 
       const { uuid, location } = await doNamelistUpload(req, examUuid);
 
+      await Exam.updateOne(
+        { _id: exam._id },
+        { namelistURL: location }
+      );
+
       await createActivityLog({
         user: req.user,
         action: ActivityAction.UPLOAD,
@@ -1335,6 +1856,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const examFilter = {
         uuid: examUuid,
@@ -1377,6 +1902,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { name, type } = req.body;
       const examFilter = {
@@ -1420,6 +1949,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { key } = req.body;
       const examFilter = {
@@ -1459,6 +1992,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const examFilter = {
         uuid: examUuid,
@@ -1501,6 +2038,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { name, type } = req.body;
       const examFilter = {
@@ -1544,6 +2085,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { key } = req.body;
       const examFilter = {
@@ -1583,6 +2128,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const examFilter = {
         uuid: examUuid,
@@ -1634,6 +2183,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { name, type } = req.body;
       const examFilter = {
@@ -1677,6 +2230,10 @@ router.post(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid: examUuid } = req.params;
       const { key } = req.body;
       const examFilter = {
@@ -1834,6 +2391,10 @@ router.delete(
   hasPermission(Permission.UPDATE_EXAM.key),
   async (req, res) => {
     try {
+      if (!assertCanManageResults(req, res)) {
+        return;
+      }
+
       const { uuid, fileUrl } = req.params;
       const examFilter = {
         uuid,
