@@ -23,6 +23,30 @@ const FileTypeKey = {
 const TRACKED_USER_TYPES = [UserType.STAFF, UserType.SUPERUSER];
 const TRACKED_FILE_TYPES = new Set(Object.values(FileTypeKey));
 const TRACKED_ACTIONS = new Set(Object.values(ActivityAction));
+const MAX_TEXT_FILTER_LENGTH = 80;
+
+const escapeRegExp = (value = "") =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sanitizeTextFilter = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, MAX_TEXT_FILTER_LENGTH);
+};
+
+const parseDateFilter = (value) => {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
 
 const isTrackedUser = (user) => {
   if (!user || !user.type) {
@@ -139,11 +163,62 @@ const parsePagination = (query = {}) => {
   return { page, limit, skip };
 };
 
+const parseActivityLogFilters = (query = {}) => {
+  const filters = {};
+  const name = sanitizeTextFilter(query.name);
+  const fileName = sanitizeTextFilter(query.fileName);
+  const exam = sanitizeTextFilter(query.exam);
+  const action = sanitizeTextFilter(query.action).toLowerCase();
+  const fileTypeKey = sanitizeTextFilter(query.fileTypeKey);
+
+  if (name) {
+    filters.name = { $regex: escapeRegExp(name), $options: "i" };
+  }
+
+  if (fileName) {
+    filters.fileName = { $regex: escapeRegExp(fileName), $options: "i" };
+  }
+
+  if (action && TRACKED_ACTIONS.has(action)) {
+    filters.action = action;
+  }
+
+  if (fileTypeKey && TRACKED_FILE_TYPES.has(fileTypeKey)) {
+    filters.fileTypeKey = fileTypeKey;
+  }
+
+  let createdAtFrom = parseDateFilter(query.createdAtFrom);
+  let createdAtTo = parseDateFilter(query.createdAtTo);
+
+  if (createdAtFrom && createdAtTo && createdAtFrom > createdAtTo) {
+    const temp = createdAtFrom;
+    createdAtFrom = createdAtTo;
+    createdAtTo = temp;
+  }
+
+  if (createdAtFrom || createdAtTo) {
+    filters.createdAt = {};
+    if (createdAtFrom) {
+      filters.createdAt.$gte = createdAtFrom;
+    }
+    if (createdAtTo) {
+      filters.createdAt.$lte = createdAtTo;
+    }
+  }
+
+  const examNameRegex = exam
+    ? { $regex: escapeRegExp(exam), $options: "i" }
+    : null;
+
+  return { filters, examNameRegex };
+};
+
 module.exports = {
   ActivityAction,
   FileTypeKey,
   createActivityLog,
   isTrackedUser,
   parsePagination,
+  parseActivityLogFilters,
   extractFileNameFromUrl,
 };

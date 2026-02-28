@@ -36,6 +36,7 @@ const {
   createActivityLog,
   isTrackedUser,
   parsePagination,
+  parseActivityLogFilters,
   extractFileNameFromUrl,
 } = require("../../util/activity.log.util");
 
@@ -93,9 +94,28 @@ router.get(
       }
 
       const { page, limit, skip } = parsePagination(req.query);
+      const { filters, examNameRegex } = parseActivityLogFilters(req.query);
       const queryFilter = req.schoolPrefix
-        ? { schoolPrefix: req.schoolPrefix }
-        : {};
+        ? { schoolPrefix: req.schoolPrefix, ...filters }
+        : { ...filters };
+
+      if (examNameRegex) {
+        const schoolExamFilter = createSchoolFilter(req.schoolPrefix, "name");
+        const examQuery = schoolExamFilter
+          ? { $and: [schoolExamFilter, { name: examNameRegex }] }
+          : { name: examNameRegex };
+
+        const filteredExams = await Exam.find(examQuery).select("uuid").lean();
+        const filteredExamUuids = filteredExams
+          .map(({ uuid }) => uuid)
+          .filter(Boolean);
+
+        if (!filteredExamUuids.length) {
+          return res.json({ data: [], total: 0, page, limit });
+        }
+
+        queryFilter.examUuid = { $in: filteredExamUuids };
+      }
 
       const [logs, total] = await Promise.all([
         ActivityLog.find(queryFilter)
