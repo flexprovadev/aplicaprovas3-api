@@ -22,6 +22,7 @@ const {
   QuestionType,
   ExamStudentStatus,
   StorageFolder,
+  UserType,
 } = require("../../enumerator");
 const { hasPermission, isStudent } = require("../../middleware");
 const { v4: uuidv4 } = require("uuid");
@@ -83,6 +84,12 @@ const isFieldCleared = (value) =>
 
 const resolveFileName = (req, fallbackUrl) =>
   req?.body?.name || extractFileNameFromUrl(fallbackUrl);
+
+const RESULT_FILE_TYPE_KEYS = new Set([
+  FileTypeKey.CLASSIFICATION_1,
+  FileTypeKey.CLASSIFICATION_2,
+  FileTypeKey.INDIVIDUAL_RESULTS,
+]);
 
 router.get(
   "/activity-logs",
@@ -146,8 +153,20 @@ router.get(
         );
       }
 
+      const canEditExamFiles =
+        req.user.type === UserType.SUPERUSER ||
+        Boolean(req.user.hasPermission(Permission.UPDATE_EXAM.key));
+      const canDownloadResultsFiles = canDownloadResults(req.user);
+
       const logsWithExamName = logs.map((entry) => ({
         ...entry,
+        fileUrl: RESULT_FILE_TYPE_KEYS.has(entry.fileTypeKey)
+          ? canDownloadResultsFiles
+            ? entry.fileUrl || ""
+            : ""
+          : canEditExamFiles
+            ? entry.fileUrl || ""
+            : "",
         examName: examNameByUuid.get(entry.examUuid) || "",
       }));
 
