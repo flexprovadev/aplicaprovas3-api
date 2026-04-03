@@ -352,7 +352,7 @@ router.post(
 
 router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
   try {
-    const studentsSelectFields = "-_id name email";
+    const studentsSelectFields = "-_id uuid name email";
 
     const examFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
     const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
@@ -399,8 +399,8 @@ router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
     const studentExistsFilter = (entry) => entry.student;
 
     const examStudentMapper = (examStudent) => {
-      const { name, email } = examStudent.student;
-      return { name, email };
+      const { uuid, name, email } = examStudent.student;
+      return { uuid, name, email };
     };
 
     exams.forEach((exam) => {
