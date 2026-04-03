@@ -72,6 +72,17 @@ const questionMapper = (question) => ({
 const normalizeQuestions = (questions = []) =>
   questions.filter(questionFilter).map(questionMapper);
 
+const hasAnswerKeyFile = (exam = {}) =>
+  Boolean(exam?.preliminarkeyURL || exam?.finalkeyURL);
+
+const isAnswerKeyReleased = (exam = {}, currentDate) =>
+  Boolean(exam?.endAt && exam.endAt < currentDate);
+
+const answerKeyMapper = (exam = {}) => {
+  const { uuid, name, preliminarkeyURL = null, finalkeyURL = null } = exam;
+  return { uuid, name, preliminarkeyURL, finalkeyURL };
+};
+
 const LEGACY_PUT_FILE_FIELDS_ENABLED =
   process.env.EXAM_ALLOW_LEGACY_FILE_FIELDS_IN_PUT !== "false";
 
@@ -431,6 +442,11 @@ router.get("/available", isStudent, async (req, res) => {
 
     const examMatch = createSchoolFilter(req.schoolPrefix, "name");
     const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+    const currentDateTime = DateTime.local();
+    const currentDate = currentDateTime.toJSDate();
+    const comingSoonLimitDate = currentDateTime
+      .plus({ days: config.exam.comingSoonMaxDays })
+      .toJSDate();
 
     const examsInProgress = await ExamStudent.find({
       student,
@@ -470,6 +486,14 @@ router.get("/available", isStudent, async (req, res) => {
 
     const done = examsSubmitted.filter(examExistsFilter).map(examStudentMapper);
 
+    const answerKeysFromSubmitted = examsSubmitted
+      .filter(examExistsFilter)
+      .map(({ exam }) => exam)
+      .filter(
+        (exam) => isAnswerKeyReleased(exam, currentDate) && hasAnswerKeyFile(exam)
+      )
+      .map(answerKeyMapper);
+
     const unavailableUuids = [...progress, ...done].map((entry) => entry.uuid);
 
     const classrooms = await Classroom.find({
@@ -479,12 +503,6 @@ router.get("/available", isStudent, async (req, res) => {
     })
       .select("_id")
       .lean();
-
-    const currentDateTime = DateTime.local();
-    const currentDate = currentDateTime.toJSDate();
-    const comingSoonLimitDate = currentDateTime
-      .plus({ days: config.exam.comingSoonMaxDays })
-      .toJSDate();
 
     const examFilter = examMatch || {};
 
@@ -511,6 +529,17 @@ router.get("/available", isStudent, async (req, res) => {
       },
     });
 
+    const answerKeyExams = await Exam.find({
+      ...examFilter,
+      classrooms: { $in: classrooms },
+      uuid: { $nin: unavailableUuids },
+      endAt: { $lt: currentDate },
+      $or: [
+        { preliminarkeyURL: { $exists: true, $nin: [null, ""] } },
+        { finalkeyURL: { $exists: true, $nin: [null, ""] } },
+      ],
+    }).lean();
+
     const exampMapper = (entry) => {
       const { uuid, name, startAt, endAt, durationExam } = entry;
       return {
@@ -525,12 +554,17 @@ router.get("/available", isStudent, async (req, res) => {
     const available = availableExams.map(exampMapper);
 
     const comingSoon = comingSoonExams.map(exampMapper);
+    const answerKeys = [
+      ...answerKeysFromSubmitted,
+      ...answerKeyExams.map(answerKeyMapper),
+    ];
 
     return res.json({
       done,
       available,
       progress,
       comingSoon,
+      answerKeys,
     });
   } catch (ex) {
     return res.status(400).json({ message: "Erro ao recuperar provas" });
