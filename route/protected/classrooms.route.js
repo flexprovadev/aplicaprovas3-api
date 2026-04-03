@@ -12,6 +12,15 @@ router.get(
     try {
       const classroomFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
       const studentMatch = createSchoolFilter(req.schoolPrefix, "email");
+      const includeStudents = req.query.includeStudents !== "false";
+
+      if (!includeStudents) {
+        const classrooms = await Classroom.find(classroomFilter)
+          .select("uuid name year level shift enabled")
+          .sort({ name: 1, level: 1, year: 1 })
+          .lean();
+        return res.json(classrooms);
+      }
 
       const classrooms = await Classroom.find(classroomFilter)
         .select("uuid name year level shift enabled")

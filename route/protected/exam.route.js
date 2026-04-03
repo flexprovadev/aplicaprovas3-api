@@ -227,6 +227,69 @@ const isFieldCleared = (value) =>
 const resolveFileName = (req, fallbackUrl) =>
   req?.body?.name || extractFileNameFromUrl(fallbackUrl);
 
+const MAX_EXAM_LIST_FILTER_LENGTH = 80;
+
+const escapeRegExp = (value = "") =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sanitizeExamListTextFilter = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().slice(0, MAX_EXAM_LIST_FILTER_LENGTH);
+};
+
+const parseClassroomUuidsFilter = (value) => {
+  if (Array.isArray(value)) {
+    return [
+      ...new Set(
+        value
+          .flatMap((entry) => String(entry || "").split(","))
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      ),
+    ];
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    ),
+  ];
+};
+
+const buildExamListQuery = ({ schoolPrefix, nameFilter }) => {
+  const schoolFilter = createSchoolFilter(schoolPrefix, "name");
+  const normalizedNameFilter = sanitizeExamListTextFilter(nameFilter);
+
+  if (!normalizedNameFilter) {
+    return schoolFilter || {};
+  }
+
+  const textFilter = {
+    name: {
+      $regex: escapeRegExp(normalizedNameFilter),
+      $options: "i",
+    },
+  };
+
+  if (!schoolFilter) {
+    return textFilter;
+  }
+
+  return {
+    $and: [schoolFilter, textFilter],
+  };
+};
+
 const RESULT_FILE_TYPE_KEYS = new Set([
   FileTypeKey.CLASSIFICATION_1,
   FileTypeKey.CLASSIFICATION_2,
@@ -352,6 +415,52 @@ router.post(
 
 router.get("", hasPermission(Permission.READ_EXAM.key), async (req, res) => {
   try {
+    const hasPagination = req.query.page || req.query.limit;
+
+    if (hasPagination) {
+      const { page, limit, skip } = parsePagination(req.query);
+      const classroomMatch = createSchoolFilter(req.schoolPrefix, "name");
+      const queryFilter = buildExamListQuery({
+        schoolPrefix: req.schoolPrefix,
+        nameFilter: req.query.name,
+      });
+      const classroomUuids = parseClassroomUuidsFilter(req.query.classroomUuids);
+
+      if (classroomUuids.length) {
+        const classroomQuery = {
+          uuid: { $in: classroomUuids },
+          ...(classroomMatch || {}),
+        };
+        const classrooms = await Classroom.find(classroomQuery)
+          .select("_id")
+          .lean();
+
+        const classroomIds = classrooms.map(({ _id }) => _id);
+
+        if (!classroomIds.length) {
+          return res.json({ data: [], total: 0, page, limit });
+        }
+
+        queryFilter.classrooms = { $in: classroomIds };
+      }
+
+      const [exams, total] = await Promise.all([
+        Exam.find(queryFilter)
+          .populate({
+            path: "classrooms",
+            select: "-_id uuid name year level",
+            ...(classroomMatch ? { match: classroomMatch } : {}),
+          })
+          .select("uuid name classrooms")
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Exam.countDocuments(queryFilter),
+      ]);
+
+      return res.json({ data: exams, total, page, limit });
+    }
+
     const studentsSelectFields = "-_id uuid name email";
 
     const examFilter = createSchoolFilter(req.schoolPrefix, "name") || {};
