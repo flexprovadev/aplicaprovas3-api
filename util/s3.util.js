@@ -5,27 +5,73 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { v4: uuidv4 } = require("uuid");
 const { StorageFolder } = require("../enumerator");
 
+const MIME_TO_EXTENSION = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "application/pdf": "pdf",
+  "application/zip": "zip",
+  "image/tiff": "tif",
+  "image/tif": "tif",
+  "text/plain": "txt",
+  "text/markdown": "md",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel.sheet.macroenabled.12": "xlsm",
+  "text/csv": "csv",
+  "application/vnd.oasis.opendocument.text": "odt",
+  "application/vnd.oasis.opendocument.spreadsheet": "ods",
+  "application/msword": "doc",
+  "application/rtf": "rtf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+};
+
+const EXTENSION_TO_MIME = Object.entries(MIME_TO_EXTENSION).reduce(
+  (acc, [mimeType, extension]) => {
+    if (!acc[extension]) {
+      acc[extension] = mimeType;
+    }
+    return acc;
+  },
+  {}
+);
+
+const normalizeContentType = (contentType = "") => {
+  return String(contentType).split(";")[0].trim().toLowerCase();
+};
+
+const getOriginalExtension = (originalName = "") => {
+  const normalizedOriginalName = String(originalName);
+  const lastDotIndex = normalizedOriginalName.lastIndexOf(".");
+  if (lastDotIndex === -1) {
+    return "";
+  }
+
+  return normalizedOriginalName.substring(lastDotIndex + 1).trim().toLowerCase();
+};
+
+const resolveUploadFileType = ({ contentType, originalName } = {}) => {
+  const normalizedContentType = normalizeContentType(contentType);
+  const originalExtension = getOriginalExtension(originalName);
+
+  if (normalizedContentType && MIME_TO_EXTENSION[normalizedContentType]) {
+    return {
+      contentType: normalizedContentType,
+      extension: MIME_TO_EXTENSION[normalizedContentType],
+    };
+  }
+
+  if (originalExtension && EXTENSION_TO_MIME[originalExtension]) {
+    return {
+      contentType: EXTENSION_TO_MIME[originalExtension],
+      extension: originalExtension,
+    };
+  }
+
+  throw new Error(`Invalid content type: ${contentType || originalName || "unknown"}`);
+};
+
 const getExtension = (contentType) => {
-  return {
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "application/pdf": "pdf",
-    "application/zip": "zip",
-    "image/tiff": "tif",
-    "image/tif": "tif",
-    // Tipos para namelist
-    "text/plain": "txt",
-    "text/markdown": "md",
-    "application/vnd.ms-excel": "xls",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-    "application/vnd.ms-excel.sheet.macroEnabled.12": "xlsm",
-    "text/csv": "csv",
-    "application/vnd.oasis.opendocument.text": "odt",
-    "application/vnd.oasis.opendocument.spreadsheet": "ods",
-    "application/msword": "doc",
-    "application/rtf": "rtf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-  }[contentType];
+  return MIME_TO_EXTENSION[normalizeContentType(contentType)];
 };
 
 const maybeAddStoragePrefix = (key) => {
@@ -57,20 +103,27 @@ const buildBaseUploadParams = (req) => {
     throw new Error("req.file is mandatory");
   }
 
-  const { buffer, size, mimetype } = file;
+  const { buffer, size, mimetype, originalname } = file;
+  const { contentType } = resolveUploadFileType({
+    contentType: mimetype,
+    originalName: originalname,
+  });
 
   return {
     Body: buffer,
     ACL: "public-read",
     ContentLength: size,
-    ContentType: mimetype,
+    ContentType: contentType,
     Bucket: config.s3.bucket,
   };
 };
 
 const buildUploadParams = (req, prefixGenerator) => {
   const baseParams = buildBaseUploadParams(req);
-  const extension = getExtension(baseParams.ContentType);
+  const { extension } = resolveUploadFileType({
+    contentType: baseParams.ContentType,
+    originalName: req.file?.originalname || "",
+  });
   const uuid = uuidv4();
   const originalName = req.file?.originalname || "";
   const sanitizedName = sanitizeFilename(originalName);
@@ -139,10 +192,8 @@ const buildPublicUrl = (key) => {
 };
 
 const createPresignedUpload = async ({ prefix, contentType, originalName, expiresInSeconds }) => {
-  const extension = getExtension(contentType);
-  if (!extension) {
-    throw new Error(`Invalid content type: ${contentType}`);
-  }
+  const resolvedFileType = resolveUploadFileType({ contentType, originalName });
+  const { contentType: resolvedContentType, extension } = resolvedFileType;
 
   const uuid = uuidv4();
   const sanitizedName = sanitizeFilename(originalName);
@@ -154,7 +205,7 @@ const createPresignedUpload = async ({ prefix, contentType, originalName, expire
   const command = new PutObjectCommand({
     Bucket: config.s3.bucket,
     Key: key,
-    ContentType: contentType,
+    ContentType: resolvedContentType,
     ACL: "public-read",
   });
 
@@ -170,7 +221,7 @@ const createPresignedUpload = async ({ prefix, contentType, originalName, expire
     uploadUrl,
     location,
     headers: {
-      "Content-Type": contentType,
+      "Content-Type": resolvedContentType,
     },
   };
 };
@@ -306,4 +357,5 @@ module.exports = {
   doPrintableAnswerSheetUpload,
   buildPublicUrl,
   createPresignedUpload,
+  resolveUploadFileType,
 };
